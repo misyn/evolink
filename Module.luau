@@ -103,7 +103,7 @@ local PityCache = {
 local FastBattleState = {enabled = false, originalGetSpeed = nil, originalIsEnabled = nil, hooked = false}
 local autoBattleEnabled = false
 local autoBattleThread = nil
-local Running = true
+local Running = false
 local LastAction = nil
 local LastActionTime = 0
 local PendingLog = nil
