@@ -1,8 +1,11 @@
 
-local Evolink = {}
-Evolink.__index = Evolink
+local AutoCatch = {}
+AutoCatch.__index = AutoCatch
 
-local Config = getgenv().EvolinkConfig or {
+-- ═══════════════════════════════════════════════════════════════
+-- CONFIG (mirrors getgenv().AutoCatchConfig)
+-- ═══════════════════════════════════════════════════════════════
+local Config = getgenv().AutoCatchConfig or {
     HuntingEnabled = true,
     EncounterEnabled = true,
     EncounterCooldown = 3,
@@ -33,6 +36,9 @@ local Config = getgenv().EvolinkConfig or {
     SkillInterval = 0.5,
 }
 
+-- ═══════════════════════════════════════════════════════════════
+-- SERVICES & REMOTES
+-- ═══════════════════════════════════════════════════════════════
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -53,6 +59,9 @@ local ElementModule = require(Script:WaitForChild("Element"):WaitForChild("Eleme
 local ElementConst = require(Script:WaitForChild("Element"):WaitForChild("Basic"):WaitForChild("ElementConst"))
 local ReqOperateBattle = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Battle"):WaitForChild("ReqOperateBattle")
 
+-- ═══════════════════════════════════════════════════════════════
+-- MODULES (lazy-loaded with pcall)
+-- ═══════════════════════════════════════════════════════════════
 local PetConfig, ShinyPetLotteryStorage, ShinyPetLotteryService, ErrorCode
 pcall(function() PetConfig = require(ReplicatedStorage.Config.PetConfig) end)
 
@@ -68,6 +77,9 @@ TryLoadModules()
 
 local SUCCEEDED = ErrorCode and ErrorCode.SUCCEEDED or 0
 
+-- ═══════════════════════════════════════════════════════════════
+-- CONSTANTS
+-- ═══════════════════════════════════════════════════════════════
 local BALLS = {
     SoftCatch = 1000001, Common = 2000015, Advanced = 2000016,
     King = 2000017, Prismatic = 2000018,
@@ -96,6 +108,9 @@ local VALID_RESPONSES = {[0] = true, [20000] = true}
 local MOVE_DISABLED_CODES = {}
 for i = 20001, 20030 do MOVE_DISABLED_CODES[i] = true end
 
+-- ═══════════════════════════════════════════════════════════════
+-- STATE
+-- ═══════════════════════════════════════════════════════════════
 local State = {
     Running = false,
     Thread = nil,
@@ -115,6 +130,9 @@ local State = {
     SessionStats = {encounters = 0, catches = 0, flees = 0, shinyEncounters = 0, shinyCaught = 0, goalCatches = 0},
 }
 
+-- ═══════════════════════════════════════════════════════════════
+-- INTERNAL HELPERS
+-- ═══════════════════════════════════════════════════════════════
 local function BuildTargetChain()
     State.TargetChain = {}
     local function add(t) if type(t) == "table" and #t > 0 then table.insert(State.TargetChain, t) end end
@@ -133,10 +151,10 @@ local function AdvanceChain()
     if not Config.NextChainEnabled then return false end
     State.CurrentChainIndex = State.CurrentChainIndex + 1
     if State.CurrentChainIndex > #State.TargetChain then
-        if Config.LoopAfterChainEnd then State.CurrentChainIndex = 1; print("[Evolink] Chain complete. Looping.") return true
-        else print("[Evolink] Chain complete. Stopping.") return false end
+        if Config.LoopAfterChainEnd then State.CurrentChainIndex = 1; print("[AutoCatch] Chain complete. Looping.") return true
+        else print("[AutoCatch] Chain complete. Stopping.") return false end
     end
-    print("[Evolink] Advanced to group " .. State.CurrentChainIndex)
+    print("[AutoCatch] Advanced to group " .. State.CurrentChainIndex)
     return true
 end
 
@@ -335,6 +353,9 @@ end
 
 local function FireEncounter(creatureId) if not creatureId then return false end; return pcall(function() ReqEnterPetBattle:FireServer(creatureId) end) end
 
+-- ═══════════════════════════════════════════════════════════════
+-- FAST BATTLE
+-- ═══════════════════════════════════════════════════════════════
 local function GetControllerManager()
     local core = ReplicatedStorage:FindFirstChild("Core"); if not core then return nil end
     local ctrl = core:FindFirstChild("Controller"); if not ctrl then return nil end
@@ -376,6 +397,9 @@ local function RemoveFastBattle()
     State.FastBattleHooked = false; print("[FastBattle] Disabled")
 end
 
+-- ═══════════════════════════════════════════════════════════════
+-- AUTO SKILL SYSTEM
+-- ═══════════════════════════════════════════════════════════════
 local function getCurrentBattleData()
     local BattleService = require(Script:WaitForChild("Battle"):WaitForChild("BattleService"))
     local battle = BattleService.getCurrentBattle()
@@ -599,6 +623,9 @@ end
 
 local function stopAutoBattle() State.AutoBattleEnabled = false; State.AutoBattleThread = nil end
 
+-- ═══════════════════════════════════════════════════════════════
+-- MAIN LOOP
+-- ═══════════════════════════════════════════════════════════════
 local function MainLoop()
     while State.Running do
         task.wait(0.3)
@@ -626,17 +653,17 @@ local function MainLoop()
                 if shiny == true then State.SessionStats.shinyEncounters = State.SessionStats.shinyEncounters + 1; State.SessionStats.shinyCaught = State.SessionStats.shinyCaught + 1 end
                 if isGoalCatch and Config.StopOnCatch then
                     State.SessionStats.goalCatches = State.SessionStats.goalCatches + 1
-                    print("[Evolink] GOAL CAUGHT! (" .. method .. ") Stopping.")
+                    print("[AutoCatch] GOAL CAUGHT! (" .. method .. ") Stopping.")
                     State.Running = false; RemoveFastBattle(); stopAutoBattle(); return
                 end
                 if Config.NextChainEnabled then if not AdvanceChain() then State.Running = false; RemoveFastBattle(); stopAutoBattle(); return end end
                 State.LastAction = action; State.LastActionTime = tick(); task.wait(1.2)
-                State.PendingLog = "[Evolink] CATCH | Target: " .. targetLabel .. " | Method: " .. method .. (isGoalCatch and " [GOAL]" or " [PITY]")
+                State.PendingLog = "[AutoCatch] CATCH | Target: " .. targetLabel .. " | Method: " .. method .. (isGoalCatch and " [GOAL]" or " [PITY]")
                 task.wait(0.5)
             elseif action == "flee" then
                 LeaveBattle(); State.SessionStats.flees = State.SessionStats.flees + 1
                 State.LastAction = action; State.LastActionTime = tick()
-                State.PendingLog = "[Evolink] FLEE | Target: " .. targetLabel
+                State.PendingLog = "[AutoCatch] FLEE | Target: " .. targetLabel
                 task.wait(2.5)
             elseif action == "wait" then task.wait(0.5) end
         else
@@ -653,79 +680,82 @@ local function MainLoop()
     end
 end
 
-function Evolink:Start()
-    if State.Running then print("[Evolink] Already running.") return end
+-- ═══════════════════════════════════════════════════════════════
+-- PUBLIC API (getgenv() exports)
+-- ═══════════════════════════════════════════════════════════════
+function AutoCatch:Start()
+    if State.Running then print("[AutoCatch] Already running.") return end
     State.Running = true
     task.spawn(function()
         local ok, err = pcall(MainLoop)
-        if not ok then warn("[Evolink] Crashed: " .. tostring(err)); warn(debug.traceback()) end
+        if not ok then warn("[AutoCatch] Crashed: " .. tostring(err)); warn(debug.traceback()) end
     end)
-    print("[Evolink] Started.")
+    print("[AutoCatch] Started.")
 end
 
-function Evolink:Stop()
+function AutoCatch:Stop()
     State.Running = false; RemoveFastBattle(); stopAutoBattle()
-    print("[Evolink] Stopped.")
+    print("[AutoCatch] Stopped.")
 end
 
-function Evolink:Toggle() if State.Running then self:Stop() else self:Start() end; return State.Running end
-function Evolink:IsRunning() return State.Running end
+function AutoCatch:Toggle() if State.Running then self:Stop() else self:Start() end; return State.Running end
+function AutoCatch:IsRunning() return State.Running end
 
-function Evolink:SetHuntingEnabled(v) Config.HuntingEnabled = v == true; print("[Evolink] Hunting:", Config.HuntingEnabled) end
-function Evolink:SetEncounterEnabled(v) Config.EncounterEnabled = v == true; print("[Evolink] Encounter:", Config.EncounterEnabled) end
-function Evolink:SetHuntMode(v) if v ~= "Both" and v ~= "ShinyOnly" and v ~= "PrismaticOnly" and v ~= "PrismaticShiny" then warn("Invalid mode") return end; Config.HuntMode = v; print("[Evolink] Mode:", v) end
-function Evolink:SetFleeFromShiny(v) Config.FleeFromShiny = v == true; print("[Evolink] FleeShiny:", Config.FleeFromShiny) end
-function Evolink:SetUseSoftCatch(v) Config.UseSoftCatch = v ~= false; print("[Evolink] SoftCatch:", Config.UseSoftCatch) end
-function Evolink:SetFleeNonShinyAtPityMax(v) Config.FleeNonShinyAtPityMax = v ~= false; print("[Evolink] FleeNonShinyMax:", Config.FleeNonShinyAtPityMax) end
-function Evolink:SetFastBattle(v) Config.FastBattle = v ~= false; print("[Evolink] FastBattle:", Config.FastBattle) end
-function Evolink:SetStopOnCatch(v) Config.StopOnCatch = v == true; print("[Evolink] StopOnCatch:", Config.StopOnCatch) end
-function Evolink:SetNextChainEnabled(v) Config.NextChainEnabled = v == true; print("[Evolink] NextChain:", Config.NextChainEnabled) end
-function Evolink:SetLoopAfterChainEnd(v) Config.LoopAfterChainEnd = v == true; print("[Evolink] LoopChain:", Config.LoopAfterChainEnd) end
-function Evolink:SetEncounterCooldown(v) if type(v) ~= "number" or v < 0 then warn("Need positive number") return end; Config.EncounterCooldown = v; print("[Evolink] Cooldown:", v) end
+function AutoCatch:SetHuntingEnabled(v) Config.HuntingEnabled = v == true; print("[AutoCatch] Hunting:", Config.HuntingEnabled) end
+function AutoCatch:SetEncounterEnabled(v) Config.EncounterEnabled = v == true; print("[AutoCatch] Encounter:", Config.EncounterEnabled) end
+function AutoCatch:SetHuntMode(v) if v ~= "Both" and v ~= "ShinyOnly" and v ~= "PrismaticOnly" and v ~= "PrismaticShiny" then warn("Invalid mode") return end; Config.HuntMode = v; print("[AutoCatch] Mode:", v) end
+function AutoCatch:SetFleeFromShiny(v) Config.FleeFromShiny = v == true; print("[AutoCatch] FleeShiny:", Config.FleeFromShiny) end
+function AutoCatch:SetUseSoftCatch(v) Config.UseSoftCatch = v ~= false; print("[AutoCatch] SoftCatch:", Config.UseSoftCatch) end
+function AutoCatch:SetFleeNonShinyAtPityMax(v) Config.FleeNonShinyAtPityMax = v ~= false; print("[AutoCatch] FleeNonShinyMax:", Config.FleeNonShinyAtPityMax) end
+function AutoCatch:SetFastBattle(v) Config.FastBattle = v ~= false; print("[AutoCatch] FastBattle:", Config.FastBattle) end
+function AutoCatch:SetStopOnCatch(v) Config.StopOnCatch = v == true; print("[AutoCatch] StopOnCatch:", Config.StopOnCatch) end
+function AutoCatch:SetNextChainEnabled(v) Config.NextChainEnabled = v == true; print("[AutoCatch] NextChain:", Config.NextChainEnabled) end
+function AutoCatch:SetLoopAfterChainEnd(v) Config.LoopAfterChainEnd = v == true; print("[AutoCatch] LoopChain:", Config.LoopAfterChainEnd) end
+function AutoCatch:SetEncounterCooldown(v) if type(v) ~= "number" or v < 0 then warn("Need positive number") return end; Config.EncounterCooldown = v; print("[AutoCatch] Cooldown:", v) end
 
-function Evolink:SetEncounterTarget(t)
+function AutoCatch:SetEncounterTarget(t)
     if type(t) ~= "table" then if type(t) == "number" then t = {t} else warn("Need table or number") return end end
-    Config.EncounterTarget = t; BuildTargetChain(); State.CurrentChainIndex = 1; print("[Evolink] Targets:", table.concat(t, ", "))
+    Config.EncounterTarget = t; BuildTargetChain(); State.CurrentChainIndex = 1; print("[AutoCatch] Targets:", table.concat(t, ", "))
 end
 
-function Evolink:SetEncounterTargetGroup(groupNum, t)
+function AutoCatch:SetEncounterTargetGroup(groupNum, t)
     if type(groupNum) ~= "number" or groupNum < 1 or groupNum > 5 then warn("Group 1-5") return end
     if type(t) ~= "table" then if type(t) == "number" then t = {t} else warn("Need table or number") return end end
     local key = "EncounterTarget"; if groupNum > 1 then key = key .. groupNum end
-    Config[key] = t; BuildTargetChain(); print("[Evolink] " .. key .. ":", table.concat(t, ", "))
+    Config[key] = t; BuildTargetChain(); print("[AutoCatch] " .. key .. ":", table.concat(t, ", "))
 end
 
-function Evolink:AddTarget(configId)
+function AutoCatch:AddTarget(configId)
     if type(configId) ~= "number" then warn("Need number") return end
     local targets = GetCurrentTargets(); if not targets then warn("No active group") return end
     for _, id in ipairs(targets) do if id == configId then print("Already in group") return end end
-    table.insert(targets, configId); print("[Evolink] Added:", configId)
+    table.insert(targets, configId); print("[AutoCatch] Added:", configId)
 end
 
-function Evolink:RemoveTarget(configId)
+function AutoCatch:RemoveTarget(configId)
     if type(configId) ~= "number" then warn("Need number") return end
     local targets = GetCurrentTargets(); if not targets then warn("No active group") return end
-    for i, id in ipairs(targets) do if id == configId then table.remove(targets, i); print("[Evolink] Removed:", configId); return end end
-    print("[Evolink] Not found:", configId)
+    for i, id in ipairs(targets) do if id == configId then table.remove(targets, i); print("[AutoCatch] Removed:", configId); return end end
+    print("[AutoCatch] Not found:", configId)
 end
 
-function Evolink:ListTargets()
-    print("[Evolink] Current group (" .. State.CurrentChainIndex .. "):", table.concat(GetCurrentTargets() or {}, ", "))
+function AutoCatch:ListTargets()
+    print("[AutoCatch] Current group (" .. State.CurrentChainIndex .. "):", table.concat(GetCurrentTargets() or {}, ", "))
     for i, g in ipairs(State.TargetChain) do print("  Group " .. i .. ":" .. (i == State.CurrentChainIndex and " <--" or ""), table.concat(g, ", ")) end
     return GetCurrentTargets()
 end
 
-function Evolink:AdvanceChain() return AdvanceChain() end
-function Evolink:ResetChain() State.CurrentChainIndex = 1; print("[Evolink] Chain reset") end
+function AutoCatch:AdvanceChain() return AdvanceChain() end
+function AutoCatch:ResetChain() State.CurrentChainIndex = 1; print("[AutoCatch] Chain reset") end
 
-function Evolink:SetFallbackChain(chain) if type(chain) ~= "table" then warn("Need table") return end; Config.FallbackChain = chain; print("[Evolink] Fallback:", table.concat(chain, " -> ")) end
-function Evolink:SetBallForScenario(scenario, ballName)
+function AutoCatch:SetFallbackChain(chain) if type(chain) ~= "table" then warn("Need table") return end; Config.FallbackChain = chain; print("[AutoCatch] Fallback:", table.concat(chain, " -> ")) end
+function AutoCatch:SetBallForScenario(scenario, ballName)
     local valid = {NonShiny_NoPity = true, NonShiny_PityMax = true, Shiny_NoPity = true, Shiny_PityMax = true}
     if not valid[scenario] then warn("Invalid scenario") return end; if not BALLS[ballName] then warn("Invalid ball") return end
-    Config[scenario] = ballName; print("[Evolink] " .. scenario .. " -> " .. ballName)
+    Config[scenario] = ballName; print("[AutoCatch] " .. scenario .. " -> " .. ballName)
 end
 
-function Evolink:SetSkillSettings(s)
+function AutoCatch:SetSkillSettings(s)
     if type(s) ~= "table" then warn("Need table") return end
     if s.healThreshold ~= nil then Config.SkillHealThreshold = type(s.healThreshold) == "number" and s.healThreshold or Config.SkillHealThreshold end
     if s.preferKillOrder ~= nil then Config.SkillPreferKillOrder = s.preferKillOrder == true end
@@ -733,26 +763,26 @@ function Evolink:SetSkillSettings(s)
     if s.debugMode ~= nil then Config.SkillDebugMode = s.debugMode == true end
     if s.fastMode ~= nil then Config.SkillFastMode = s.fastMode ~= false end
     if s.interval ~= nil then Config.SkillInterval = type(s.interval) == "number" and s.interval or Config.SkillInterval end
-    print("[Evolink] Skill settings updated")
+    print("[AutoCatch] Skill settings updated")
 end
 
-function Evolink:GetSkillSettings()
+function AutoCatch:GetSkillSettings()
     return {healThreshold = Config.SkillHealThreshold, preferKillOrder = Config.SkillPreferKillOrder, allowMultiTarget = Config.SkillAllowMultiTarget, debugMode = Config.SkillDebugMode, fastMode = Config.SkillFastMode, interval = Config.SkillInterval}
 end
 
-function Evolink:ToggleFastBattle() if State.FastBattleHooked then RemoveFastBattle() else ApplyFastBattle() end; return State.FastBattleHooked end
-function Evolink:SetFastBattleState(v) if v then ApplyFastBattle() else RemoveFastBattle() end; return State.FastBattleHooked end
+function AutoCatch:ToggleFastBattle() if State.FastBattleHooked then RemoveFastBattle() else ApplyFastBattle() end; return State.FastBattleHooked end
+function AutoCatch:SetFastBattleState(v) if v then ApplyFastBattle() else RemoveFastBattle() end; return State.FastBattleHooked end
 
-function Evolink:GetSessionStats() return {encounters = State.SessionStats.encounters, catches = State.SessionStats.catches, goalCatches = State.SessionStats.goalCatches, flees = State.SessionStats.flees, shinyEncounters = State.SessionStats.shinyEncounters, shinyCaught = State.SessionStats.shinyCaught} end
-function Evolink:ResetSessionStats() State.SessionStats = {encounters = 0, catches = 0, flees = 0, shinyEncounters = 0, shinyCaught = 0, goalCatches = 0}; print("[Evolink] Stats reset") end
+function AutoCatch:GetSessionStats() return {encounters = State.SessionStats.encounters, catches = State.SessionStats.catches, goalCatches = State.SessionStats.goalCatches, flees = State.SessionStats.flees, shinyEncounters = State.SessionStats.shinyEncounters, shinyCaught = State.SessionStats.shinyCaught} end
+function AutoCatch:ResetSessionStats() State.SessionStats = {encounters = 0, catches = 0, flees = 0, shinyEncounters = 0, shinyCaught = 0, goalCatches = 0}; print("[AutoCatch] Stats reset") end
 
-function Evolink:GetStatus()
+function AutoCatch:GetStatus()
     return {running = State.Running, huntingEnabled = Config.HuntingEnabled, encounterEnabled = Config.EncounterEnabled, huntMode = Config.HuntMode, fastBattle = State.FastBattleHooked, autoBattle = State.AutoBattleEnabled, currentChainIndex = State.CurrentChainIndex, currentTargets = GetCurrentTargets(), ballInventory = UpdateBallInventory()}
 end
 
-function Evolink:PrintConfig()
+function AutoCatch:PrintConfig()
     print("
-========== Evolink Config ==========")
+========== AutoCatch Config ==========")
     print("  HuntingEnabled:       " .. tostring(Config.HuntingEnabled))
     print("  EncounterEnabled:     " .. tostring(Config.EncounterEnabled))
     print("  EncounterCooldown:    " .. tostring(Config.EncounterCooldown))
@@ -785,45 +815,51 @@ function Evolink:PrintConfig()
 ")
 end
 
-getgenv().Evolink = Evolink
-getgenv().StartEvolink = function() Evolink:Start() end
-getgenv().StopEvolink = function() Evolink:Stop() end
-getgenv().ToggleEvolink = function() return Evolink:Toggle() end
-getgenv().RestartEvolink = function() Evolink:Stop(); task.wait(0.5); Evolink:Start() end
+-- ═══════════════════════════════════════════════════════════════
+-- getgenv() EXPORTS (legacy toggle support)
+-- ═══════════════════════════════════════════════════════════════
+getgenv().AutoCatch = AutoCatch
+getgenv().StartAutoCatch = function() AutoCatch:Start() end
+getgenv().StopAutoCatch = function() AutoCatch:Stop() end
+getgenv().ToggleAutoCatch = function() return AutoCatch:Toggle() end
+getgenv().RestartAutoCatch = function() AutoCatch:Stop(); task.wait(0.5); AutoCatch:Start() end
 
-getgenv().ToggleFastBattle = function() return Evolink:ToggleFastBattle() end
-getgenv().SetFastBattle = function(v) return Evolink:SetFastBattleState(v) end
+getgenv().ToggleFastBattle = function() return AutoCatch:ToggleFastBattle() end
+getgenv().SetFastBattle = function(v) return AutoCatch:SetFastBattleState(v) end
 
-getgenv().SetHuntingEnabled = function(v) Evolink:SetHuntingEnabled(v) end
-getgenv().SetEncounterEnabled = function(v) Evolink:SetEncounterEnabled(v) end
-getgenv().SetEncounterCooldown = function(v) Evolink:SetEncounterCooldown(v) end
-getgenv().SetHuntMode = function(v) Evolink:SetHuntMode(v) end
-getgenv().SetFleeFromShiny = function(v) Evolink:SetFleeFromShiny(v) end
-getgenv().SetUseSoftCatch = function(v) Evolink:SetUseSoftCatch(v) end
-getgenv().SetFleeNonShinyAtPityMax = function(v) Evolink:SetFleeNonShinyAtPityMax(v) end
-getgenv().SetStopOnCatch = function(v) Evolink:SetStopOnCatch(v) end
-getgenv().SetNextChainEnabled = function(v) Evolink:SetNextChainEnabled(v) end
-getgenv().SetLoopAfterChainEnd = function(v) Evolink:SetLoopAfterChainEnd(v) end
-getgenv().SetEncounterTarget = function(t) Evolink:SetEncounterTarget(t) end
-getgenv().SetChainTarget = function(g, t) Evolink:SetEncounterTargetGroup(g, t) end
-getgenv().AddTarget = function(id) Evolink:AddTarget(id) end
-getgenv().RemoveTarget = function(id) Evolink:RemoveTarget(id) end
-getgenv().ListTargets = function() return Evolink:ListTargets() end
-getgenv().AdvanceTargetChain = function() return Evolink:AdvanceChain() end
-getgenv().ResetTargetChain = function() Evolink:ResetChain() end
-getgenv().SetFallbackChain = function(c) Evolink:SetFallbackChain(c) end
-getgenv().SetBallForScenario = function(s, b) Evolink:SetBallForScenario(s, b) end
-getgenv().SetSkillSettings = function(s) Evolink:SetSkillSettings(s) end
-getgenv().GetSkillSettings = function() return Evolink:GetSkillSettings() end
-getgenv().GetSessionStats = function() return Evolink:GetSessionStats() end
-getgenv().ResetSessionStats = function() Evolink:ResetSessionStats() end
-getgenv().GetStatus = function() return Evolink:GetStatus() end
-getgenv().PrintConfig = function() Evolink:PrintConfig() end
+getgenv().SetHuntingEnabled = function(v) AutoCatch:SetHuntingEnabled(v) end
+getgenv().SetEncounterEnabled = function(v) AutoCatch:SetEncounterEnabled(v) end
+getgenv().SetEncounterCooldown = function(v) AutoCatch:SetEncounterCooldown(v) end
+getgenv().SetHuntMode = function(v) AutoCatch:SetHuntMode(v) end
+getgenv().SetFleeFromShiny = function(v) AutoCatch:SetFleeFromShiny(v) end
+getgenv().SetUseSoftCatch = function(v) AutoCatch:SetUseSoftCatch(v) end
+getgenv().SetFleeNonShinyAtPityMax = function(v) AutoCatch:SetFleeNonShinyAtPityMax(v) end
+getgenv().SetStopOnCatch = function(v) AutoCatch:SetStopOnCatch(v) end
+getgenv().SetNextChainEnabled = function(v) AutoCatch:SetNextChainEnabled(v) end
+getgenv().SetLoopAfterChainEnd = function(v) AutoCatch:SetLoopAfterChainEnd(v) end
+getgenv().SetEncounterTarget = function(t) AutoCatch:SetEncounterTarget(t) end
+getgenv().SetChainTarget = function(g, t) AutoCatch:SetEncounterTargetGroup(g, t) end
+getgenv().AddTarget = function(id) AutoCatch:AddTarget(id) end
+getgenv().RemoveTarget = function(id) AutoCatch:RemoveTarget(id) end
+getgenv().ListTargets = function() return AutoCatch:ListTargets() end
+getgenv().AdvanceTargetChain = function() return AutoCatch:AdvanceChain() end
+getgenv().ResetTargetChain = function() AutoCatch:ResetChain() end
+getgenv().SetFallbackChain = function(c) AutoCatch:SetFallbackChain(c) end
+getgenv().SetBallForScenario = function(s, b) AutoCatch:SetBallForScenario(s, b) end
+getgenv().SetSkillSettings = function(s) AutoCatch:SetSkillSettings(s) end
+getgenv().GetSkillSettings = function() return AutoCatch:GetSkillSettings() end
+getgenv().GetSessionStats = function() return AutoCatch:GetSessionStats() end
+getgenv().ResetSessionStats = function() AutoCatch:ResetSessionStats() end
+getgenv().GetStatus = function() return AutoCatch:GetStatus() end
+getgenv().PrintConfig = function() AutoCatch:PrintConfig() end
 
+-- ═══════════════════════════════════════════════════════════════
+-- AUTO-START (if HuntingEnabled or EncounterEnabled)
+-- ═══════════════════════════════════════════════════════════════
 UpdateBallInventory()
-Evolink:PrintConfig()
+AutoCatch:PrintConfig()
 
 if Config.FastBattle then task.spawn(function() task.wait(3); ApplyFastBattle() end) end
-if Config.HuntingEnabled or Config.EncounterEnabled then Evolink:Start() end
+if Config.HuntingEnabled or Config.EncounterEnabled then AutoCatch:Start() end
 
-return Evolink
+return AutoCatch
