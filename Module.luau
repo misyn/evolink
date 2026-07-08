@@ -1,35 +1,35 @@
+-- Evolink Module - Part 1: Module Structure & Config Management
+-- OOP Wrapper for AutoCatch + Battle Automation
+
 local Evolink = {}
 Evolink.__index = Evolink
 
-local Config = {
-    HuntingEnabled = true,
-    EncounterEnabled = true,
-    EncounterCooldown = 3,
-    EncounterTarget = {1000058, 1000059},
-    EncounterTarget2 = nil,
-    EncounterTarget3 = nil,
-    EncounterTarget4 = nil,
-    EncounterTarget5 = nil,
-    NextChainEnabled = false,
-    HuntMode = "Both",
-    FleeFromShiny = false,
-    UseSoftCatch = true,
-    FleeNonShinyAtPityMax = true,
-    NonShiny_NoPity = "Common",
-    NonShiny_PityMax = "King",
-    Shiny_NoPity = "Prismatic",
-    Shiny_PityMax = "King",
-    FastBattle = true,
-    StopOnCatch = true,
-    LoopAfterChainEnd = false,
-    FallbackChain = {"Prismatic", "King", "Advanced", "Common"},
-    SkillHealThreshold = 0.5,
-    SkillPreferKillOrder = true,
-    SkillAllowMultiTarget = true,
-    SkillDebugMode = false,
-    SkillFastMode = true,
-    SkillInterval = 0.5,
-}
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local BattleRemote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Battle"):WaitForChild("ReqOperateBattle")
+local ReqEnterPetBattle = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Battle"):WaitForChild("ReqEnterPetBattle")
+
+local BattleCatchPetWindowController = nil
+local BagService = nil
+local PetConfig = nil
+local ShinyPetLotteryStorage = nil
+local ShinyPetLotteryService = nil
+local ErrorCode = nil
+local SUCCEEDED = 0
+
+local Core = ReplicatedStorage:WaitForChild("Core")
+local Script = ReplicatedStorage:WaitForChild("Script")
+local Config = Core:WaitForChild("Config")
+local ConfigDataManager = nil
+local ConfigConst = nil
+local BattleDataGetModule = nil
+local ElementModule = nil
+local ElementConst = nil
+local ReqOperateBattle = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Battle"):WaitForChild("ReqOperateBattle")
 
 local BALLS = {
     SoftCatch = 1000001,
@@ -44,104 +44,11 @@ for name, id in pairs(BALLS) do
     BALL_NAMES[id] = name
 end
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-
-local BattleRemote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Battle"):WaitForChild("ReqOperateBattle")
-local ReqEnterPetBattle = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Battle"):WaitForChild("ReqEnterPetBattle")
-local BattleCatchPetWindowController = require(ReplicatedStorage.Controller.BattleCatchPetWindowController)
-local BagService = require(ReplicatedStorage.Script.Bag.BagService)
-
-local PetConfig = nil
-pcall(function()
-    PetConfig = require(game:GetService("ReplicatedStorage").Config.PetConfig)
-end)
-
-local ShinyPetLotteryStorage = nil
-local ShinyPetLotteryService = nil
-local ErrorCode = nil
-
-pcall(function()
-    ShinyPetLotteryStorage = require(ReplicatedStorage:WaitForChild("Storage"):WaitForChild("ShinyPetLotteryStorage"))
-end)
-
-pcall(function()
-    ShinyPetLotteryService = require(ReplicatedStorage:WaitForChild("Script"):WaitForChild("ShinyPetLottery"):WaitForChild("ShinyPetLotteryService"))
-end)
-
-pcall(function()
-    ErrorCode = require(ReplicatedStorage:WaitForChild("Core"):WaitForChild("Tools"):WaitForChild("ErrorCode"))
-end)
-
-local SUCCEEDED = ErrorCode and ErrorCode.SUCCEEDED or 0
-
-local Core = ReplicatedStorage:WaitForChild("Core")
-local Script = ReplicatedStorage:WaitForChild("Script")
-local ConfigModule = Core:WaitForChild("Config")
-local ConfigDataManager = require(ConfigModule:WaitForChild("ConfigDataManager"))
-local ConfigConst = require(ConfigModule:WaitForChild("ConfigConst"))
-
-local BattleDataGetModule = require(Script:WaitForChild("MainBattleWindow"):WaitForChild("BattleDataGetModule"))
-local ElementModule = require(Script:WaitForChild("Element"):WaitForChild("ElementModule"))
-local ElementConst = require(Script:WaitForChild("Element"):WaitForChild("Basic"):WaitForChild("ElementConst"))
-local ReqOperateBattle = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("Battle"):WaitForChild("ReqOperateBattle")
-
-local TargetChain = {}
-local CurrentChainIndex = 1
-local BallInventory = {}
 local UNLIMITED_BALLS = {Common = true, SoftCatch = true}
 
-local PityCache = {
-    prismaticCurrent = nil, prismaticMax = nil,
-    shinyCurrent = nil, shinyMax = nil,
-    lastUpdated = 0,
-}
-
-local FastBattleState = {enabled = false, originalGetSpeed = nil, originalIsEnabled = nil, hooked = false}
-local autoBattleEnabled = false
-local autoBattleThread = nil
-local Running = false
-local LastAction = nil
-local LastActionTime = 0
-local PendingLog = nil
-local WasInCatchWindow = false
-local LastEncounterAttempt = 0
-
-local SessionStats = {
-    encounters = 0, catches = 0, flees = 0,
-    shinyEncounters = 0, shinyCaught = 0, goalCatches = 0,
-}
-
-local EFFECTIVENESS_MULTIPLIER = {
-    [ElementConst.ElementEffect.EXTREMELY] = 4.0,
-    [ElementConst.ElementEffect.SUPER] = 4.0,
-    [ElementConst.ElementEffect.STRONG] = 2.0,
-    [ElementConst.ElementEffect.NORMAL] = 1.0,
-    [ElementConst.ElementEffect.WEAK] = 0.5,
-    [ElementConst.ElementEffect.NOTHING] = 0.0,
-}
-
-local EFFECTIVENESS_NAMES = {
-    [ElementConst.ElementEffect.EXTREMELY] = "EXTREMELY",
-    [ElementConst.ElementEffect.SUPER] = "SUPER",
-    [ElementConst.ElementEffect.STRONG] = "STRONG",
-    [ElementConst.ElementEffect.NORMAL] = "NORMAL",
-    [ElementConst.ElementEffect.WEAK] = "WEAK",
-    [ElementConst.ElementEffect.NOTHING] = "NOTHING",
-}
-
-local EFFECTIVENESS_PRIORITY = {
-    [ElementConst.ElementEffect.EXTREMELY] = 6,
-    [ElementConst.ElementEffect.SUPER] = 5,
-    [ElementConst.ElementEffect.STRONG] = 4,
-    [ElementConst.ElementEffect.NORMAL] = 3,
-    [ElementConst.ElementEffect.WEAK] = 2,
-    [ElementConst.ElementEffect.NOTHING] = 1,
-}
-
+local EFFECTIVENESS_MULTIPLIER = {}
+local EFFECTIVENESS_NAMES = {}
+local EFFECTIVENESS_PRIORITY = {}
 local SKILL_TARGET = {
     SINGLE = 1, SELF = 2, ALL = 3, RANDOM = 4,
     ADJACENT = 5, TEAM = 6, ENEMY_TEAM = 7,
@@ -160,49 +67,253 @@ local MOVE_DISABLED_CODES = {
     [20029] = true, [20030] = true,
 }
 
-local function BuildTargetChain()
-    TargetChain = {}
-    local function addIfValid(t)
-        if type(t) == "table" and #t > 0 then
-            table.insert(TargetChain, t)
-        end
-    end
-    addIfValid(Config.EncounterTarget)
-    addIfValid(Config.EncounterTarget2)
-    addIfValid(Config.EncounterTarget3)
-    addIfValid(Config.EncounterTarget4)
-    addIfValid(Config.EncounterTarget5)
+function Evolink.new()
+    local self = setmetatable({}, Evolink)
+
+    self.Config = {
+        HuntingEnabled = true,
+        EncounterEnabled = true,
+        EncounterCooldown = 3,
+        EncounterTarget = {1000058, 1000059},
+        EncounterTarget2 = nil,
+        EncounterTarget3 = nil,
+        EncounterTarget4 = nil,
+        EncounterTarget5 = nil,
+        NextChainEnabled = false,
+        HuntMode = "Both",
+        FleeFromShiny = false,
+        UseSoftCatch = true,
+        FleeNonShinyAtPityMax = true,
+        NonShiny_NoPity = "Common",
+        NonShiny_PityMax = "King",
+        Shiny_NoPity = "Prismatic",
+        Shiny_PityMax = "King",
+        FastBattle = true,
+        StopOnCatch = true,
+        LoopAfterChainEnd = false,
+        FallbackChain = {"Prismatic", "King", "Advanced", "Common"},
+
+        SkillHealThreshold = 0.5,
+        SkillPreferKillOrder = true,
+        SkillAllowMultiTarget = true,
+        SkillDebugMode = false,
+        SkillFastMode = true,
+        SkillInterval = 0.5,
+    }
+
+    self.Running = false
+    self.LastAction = nil
+    self.LastActionTime = 0
+    self.PendingLog = nil
+    self.WasInCatchWindow = false
+    self.LastEncounterAttempt = 0
+    self.CurrentChainIndex = 1
+    self.TargetChain = {}
+    self.BallInventory = {}
+    self.PityCache = {
+        prismaticCurrent = nil, prismaticMax = nil,
+        shinyCurrent = nil, shinyMax = nil,
+        lastUpdated = 0,
+    }
+    self.FastBattleState = {
+        enabled = false, originalGetSpeed = nil, originalIsEnabled = nil, hooked = false
+    }
+    self.AutoBattleState = {
+        enabled = false, thread = nil
+    }
+    self.SessionStats = {
+        encounters = 0, catches = 0, flees = 0,
+        shinyEncounters = 0, shinyCaught = 0, goalCatches = 0,
+    }
+    self.MainThread = nil
+
+    self:InitModules()
+    self:BuildTargetChain()
+    self:UpdateBallInventory()
+
+    return self
 end
 
-local function GetCurrentTargets()
-    if CurrentChainIndex <= #TargetChain then
-        return TargetChain[CurrentChainIndex]
+function Evolink:InitModules()
+    pcall(function()
+        BattleCatchPetWindowController = require(ReplicatedStorage.Controller.BattleCatchPetWindowController)
+    end)
+    pcall(function()
+        BagService = require(ReplicatedStorage.Script.Bag.BagService)
+    end)
+    pcall(function()
+        PetConfig = require(game:GetService("ReplicatedStorage").Config.PetConfig)
+    end)
+    pcall(function()
+        ShinyPetLotteryStorage = require(ReplicatedStorage:WaitForChild("Storage"):WaitForChild("ShinyPetLotteryStorage"))
+    end)
+    pcall(function()
+        ShinyPetLotteryService = require(ReplicatedStorage:WaitForChild("Script"):WaitForChild("ShinyPetLottery"):WaitForChild("ShinyPetLotteryService"))
+    end)
+    pcall(function()
+        ErrorCode = require(ReplicatedStorage:WaitForChild("Core"):WaitForChild("Tools"):WaitForChild("ErrorCode"))
+        SUCCEEDED = ErrorCode.SUCCEEDED or 0
+    end)
+    pcall(function()
+        ConfigDataManager = require(Config:WaitForChild("ConfigDataManager"))
+    end)
+    pcall(function()
+        ConfigConst = require(Config:WaitForChild("ConfigConst"))
+    end)
+    pcall(function()
+        BattleDataGetModule = require(Script:WaitForChild("MainBattleWindow"):WaitForChild("BattleDataGetModule"))
+    end)
+    pcall(function()
+        ElementModule = require(Script:WaitForChild("Element"):WaitForChild("ElementModule"))
+    end)
+    pcall(function()
+        ElementConst = require(Script:WaitForChild("Element"):WaitForChild("Basic"):WaitForChild("ElementConst"))
+        if ElementConst and ElementConst.ElementEffect then
+            EFFECTIVENESS_MULTIPLIER = {
+                [ElementConst.ElementEffect.EXTREMELY] = 4.0,
+                [ElementConst.ElementEffect.SUPER] = 4.0,
+                [ElementConst.ElementEffect.STRONG] = 2.0,
+                [ElementConst.ElementEffect.NORMAL] = 1.0,
+                [ElementConst.ElementEffect.WEAK] = 0.5,
+                [ElementConst.ElementEffect.NOTHING] = 0.0,
+            }
+            EFFECTIVENESS_NAMES = {
+                [ElementConst.ElementEffect.EXTREMELY] = "EXTREMELY",
+                [ElementConst.ElementEffect.SUPER] = "SUPER",
+                [ElementConst.ElementEffect.STRONG] = "STRONG",
+                [ElementConst.ElementEffect.NORMAL] = "NORMAL",
+                [ElementConst.ElementEffect.WEAK] = "WEAK",
+                [ElementConst.ElementEffect.NOTHING] = "NOTHING",
+            }
+            EFFECTIVENESS_PRIORITY = {
+                [ElementConst.ElementEffect.EXTREMELY] = 6,
+                [ElementConst.ElementEffect.SUPER] = 5,
+                [ElementConst.ElementEffect.STRONG] = 4,
+                [ElementConst.ElementEffect.NORMAL] = 3,
+                [ElementConst.ElementEffect.WEAK] = 2,
+                [ElementConst.ElementEffect.NOTHING] = 1,
+            }
+        end
+    end)
+end
+
+function Evolink:BuildTargetChain()
+    self.TargetChain = {}
+    local function addIfValid(t)
+        if type(t) == "table" and #t > 0 then
+            table.insert(self.TargetChain, t)
+        end
     end
-    if Config.LoopAfterChainEnd and #TargetChain > 0 then
-        CurrentChainIndex = 1
-        return TargetChain[1]
+    addIfValid(self.Config.EncounterTarget)
+    addIfValid(self.Config.EncounterTarget2)
+    addIfValid(self.Config.EncounterTarget3)
+    addIfValid(self.Config.EncounterTarget4)
+    addIfValid(self.Config.EncounterTarget5)
+end
+
+function Evolink:GetCurrentTargets()
+    if self.CurrentChainIndex <= #self.TargetChain then
+        return self.TargetChain[self.CurrentChainIndex]
+    end
+    if self.Config.LoopAfterChainEnd and #self.TargetChain > 0 then
+        self.CurrentChainIndex = 1
+        return self.TargetChain[1]
     end
     return nil
 end
 
-local function AdvanceChain()
-    if not Config.NextChainEnabled then return false end
-    CurrentChainIndex = CurrentChainIndex + 1
-    if CurrentChainIndex > #TargetChain then
-        if Config.LoopAfterChainEnd then
-            CurrentChainIndex = 1
-            print("[Evolink] Chain complete. Looping back to target group 1.")
+function Evolink:AdvanceChain()
+    if not self.Config.NextChainEnabled then return false end
+    self.CurrentChainIndex = self.CurrentChainIndex + 1
+    if self.CurrentChainIndex > #self.TargetChain then
+        if self.Config.LoopAfterChainEnd then
+            self.CurrentChainIndex = 1
             return true
         else
-            print("[Evolink] Chain complete. No more targets. Stopping.")
             return false
         end
     end
-    print("[Evolink] Advanced to target group " .. CurrentChainIndex .. ": " .. table.concat(GetCurrentTargets() or {}, ", "))
     return true
 end
 
-local function UpdatePityCacheFromUI()
+function Evolink:UpdateBallInventory()
+    self.BallInventory = {}
+    for name, itemId in pairs(BALLS) do
+        if UNLIMITED_BALLS[name] then
+            self.BallInventory[name] = math.huge
+        else
+            local count = 0
+            pcall(function()
+                count = BagService.getItemNumById(itemId)
+            end)
+            self.BallInventory[name] = (typeof(count) == "number" and count > 0) and count or 0
+        end
+    end
+    return self.BallInventory
+end
+
+function Evolink:HasBall(ballName)
+    return (self.BallInventory[ballName] or 0) > 0
+end
+
+function Evolink:GetAvailableBall(preferredBallName)
+    local startIndex = 1
+    for i, name in ipairs(self.Config.FallbackChain) do
+        if name == preferredBallName then startIndex = i break end
+    end
+    for i = startIndex, #self.Config.FallbackChain do
+        local ballName = self.Config.FallbackChain[i]
+        if self:HasBall(ballName) then return ballName, BALLS[ballName] end
+    end
+    return nil, nil
+end
+
+function Evolink:IsInBattle()
+    local window = PlayerGui:FindFirstChild("UIPrefabs") and PlayerGui.UIPrefabs:FindFirstChild("MainBattleWindow")
+    return window and window.Enabled == true
+end
+
+function Evolink:IsCatchWindowActive()
+    local window = PlayerGui:FindFirstChild("UIPrefabs") and PlayerGui.UIPrefabs:FindFirstChild("BattleCatchPetWindow")
+    return window and window.Enabled == true
+end
+
+function Evolink:GetTargetPetId()
+    local success, result = pcall(function()
+        local window = BattleCatchPetWindowController.getWindow()
+        if not (window and typeof(window.data) == "table") then return nil end
+        local data = window.data
+        if typeof(data.catchPetInfo) == "table" then
+            local info = data.catchPetInfo
+            if typeof(info.id) == "number" then return info.id end
+            if typeof(info.petId) == "number" then return info.petId end
+            if typeof(info.configId) == "number" then return info.configId end
+            if typeof(info.monsterId) == "number" then return info.monsterId end
+            if typeof(info.creatureId) == "number" then return info.creatureId end
+        end
+        if typeof(data.petId) == "number" then return data.petId end
+        if typeof(data.id) == "number" then return data.id end
+        if typeof(data.catchPetId) == "number" then return data.catchPetId end
+        if typeof(data.targetPetId) == "number" then return data.targetPetId end
+        if typeof(data.configId) == "number" then return data.configId end
+        if typeof(data.targetPetModel) == "Instance" then
+            local model = data.targetPetModel
+            if model:GetAttribute("Id") then return model:GetAttribute("Id") end
+            if model:GetAttribute("PetId") then return model:GetAttribute("PetId") end
+            if model:GetAttribute("ConfigId") then return model:GetAttribute("ConfigId") end
+        end
+        for key, value in pairs(data) do
+            if typeof(value) == "number" and (tostring(key):lower():find("id") or tostring(key):lower():find("pet")) then
+                return value
+            end
+        end
+        return nil
+    end)
+    if success then return result end
+    return nil
+end
+
+function Evolink:UpdatePityCacheFromUI()
     local window = PlayerGui:FindFirstChild("UIPrefabs") and PlayerGui.UIPrefabs:FindFirstChild("BattleCatchPetWindow")
     if window then
         local textObj = window:FindFirstChild("MainCanvasGroup") 
@@ -214,12 +325,11 @@ local function UpdatePityCacheFromUI()
             if text and text ~= "" then
                 local current, max = text:match("(%d+)/(%d+)")
                 if current and max then
-                    PityCache.prismaticCurrent = tonumber(current)
-                    PityCache.prismaticMax = tonumber(max)
+                    self.PityCache.prismaticCurrent = tonumber(current)
+                    self.PityCache.prismaticMax = tonumber(max)
                 end
             end
         end
-
         local paths = {
             {"MainCanvasGroup", "SpecialRateFrame", "ShinyInfoFrame", "ShinyPityText"},
             {"MainCanvasGroup", "ShinyPityFrame", "ShinyPityText"},
@@ -235,116 +345,36 @@ local function UpdatePityCacheFromUI()
             if obj and obj:IsA("TextLabel") and obj.Text ~= "" then
                 local current, max = obj.Text:match("(%d+)/(%d+)")
                 if current and max then
-                    PityCache.shinyCurrent = tonumber(current)
-                    PityCache.shinyMax = tonumber(max)
+                    self.PityCache.shinyCurrent = tonumber(current)
+                    self.PityCache.shinyMax = tonumber(max)
                     break
                 end
             end
         end
-        PityCache.lastUpdated = tick()
+        self.PityCache.lastUpdated = tick()
     end
 end
 
-local function GetDisplayPityStrings(actionType)
-    local prisCurrent, prisMax = PityCache.prismaticCurrent, PityCache.prismaticMax
-    local shinyCurrent, shinyMax = PityCache.shinyCurrent, PityCache.shinyMax
-
+function Evolink:GetDisplayPityStrings(actionType)
+    local prisCurrent, prisMax = self.PityCache.prismaticCurrent, self.PityCache.prismaticMax
+    local shinyCurrent, shinyMax = self.PityCache.shinyCurrent, self.PityCache.shinyMax
     if shinyCurrent and shinyMax then shinyCurrent = shinyCurrent + 1 end
     if actionType == "catch" and prisCurrent and prisMax then prisCurrent = prisCurrent + 1 end
-
     local prisStr = (prisCurrent and prisMax) and (prisCurrent .. "/" .. prisMax) or "??/??"
     local shinyStr = (shinyCurrent and shinyMax) and (shinyCurrent .. "/" .. shinyMax) or "??/??"
     return prisStr, shinyStr
 end
 
-local function ClearPityCache()
-    PityCache.prismaticCurrent = nil; PityCache.prismaticMax = nil
-    PityCache.shinyCurrent = nil; PityCache.shinyMax = nil
-    PityCache.lastUpdated = 0
+function Evolink:ClearPityCache()
+    self.PityCache.prismaticCurrent = nil
+    self.PityCache.prismaticMax = nil
+    self.PityCache.shinyCurrent = nil
+    self.PityCache.shinyMax = nil
+    self.PityCache.lastUpdated = 0
 end
 
-local function UpdateBallInventory()
-    BallInventory = {}
-    for name, itemId in pairs(BALLS) do
-        if UNLIMITED_BALLS[name] then
-            BallInventory[name] = math.huge
-        else
-            local count = BagService.getItemNumById(itemId)
-            BallInventory[name] = (typeof(count) == "number" and count > 0) and count or 0
-        end
-    end
-    return BallInventory
-end
-
-local function HasBall(ballName)
-    return (BallInventory[ballName] or 0) > 0
-end
-
-local function GetAvailableBall(preferredBallName)
-    local startIndex = 1
-    for i, name in ipairs(Config.FallbackChain) do
-        if name == preferredBallName then startIndex = i; break end
-    end
-    for i = startIndex, #Config.FallbackChain do
-        local ballName = Config.FallbackChain[i]
-        if HasBall(ballName) then return ballName, BALLS[ballName] end
-    end
-    return nil, nil
-end
-
-local function IsInBattle()
-    local window = PlayerGui:FindFirstChild("UIPrefabs") and PlayerGui.UIPrefabs:FindFirstChild("MainBattleWindow")
-    return window and window.Enabled == true
-end
-
-local function IsCatchWindowActive()
-    local window = PlayerGui:FindFirstChild("UIPrefabs") and PlayerGui.UIPrefabs:FindFirstChild("BattleCatchPetWindow")
-    return window and window.Enabled == true
-end
-
-local function GetTargetPetId()
-    local success, result = pcall(function()
-        local window = BattleCatchPetWindowController.getWindow()
-        if not (window and typeof(window.data) == "table") then return nil end
-        local data = window.data
-
-        if typeof(data.catchPetInfo) == "table" then
-            local info = data.catchPetInfo
-            if typeof(info.id) == "number" then return info.id end
-            if typeof(info.petId) == "number" then return info.petId end
-            if typeof(info.configId) == "number" then return info.configId end
-            if typeof(info.monsterId) == "number" then return info.monsterId end
-            if typeof(info.creatureId) == "number" then return info.creatureId end
-            if typeof(info.id) == "string" then local n = tonumber(info.id); if n then return n end end
-            if typeof(info.petId) == "string" then local n = tonumber(info.petId); if n then return n end end
-        end
-
-        if typeof(data.petId) == "number" then return data.petId end
-        if typeof(data.id) == "number" then return data.id end
-        if typeof(data.catchPetId) == "number" then return data.catchPetId end
-        if typeof(data.targetPetId) == "number" then return data.targetPetId end
-        if typeof(data.configId) == "number" then return data.configId end
-
-        if typeof(data.targetPetModel) == "Instance" then
-            local model = data.targetPetModel
-            if model:GetAttribute("Id") then return model:GetAttribute("Id") end
-            if model:GetAttribute("PetId") then return model:GetAttribute("PetId") end
-            if model:GetAttribute("ConfigId") then return model:GetAttribute("ConfigId") end
-        end
-
-        for key, value in pairs(data) do
-            if typeof(value) == "number" and (tostring(key):lower():find("id") or tostring(key):lower():find("pet")) then
-                return value
-            end
-        end
-        return nil
-    end)
-    if success then return result end
-    return nil
-end
-
-local function GetPrismaticPityFromModule()
-    local petId = GetTargetPetId()
+function Evolink:GetPrismaticPityFromModule()
+    local petId = self:GetTargetPetId()
     if not petId then return nil, nil end
     if ShinyPetLotteryService and ShinyPetLotteryService.getColorPityInfo then
         local ok, code, info = pcall(function() return ShinyPetLotteryService.getColorPityInfo(petId) end)
@@ -365,8 +395,8 @@ local function GetPrismaticPityFromModule()
     return nil, nil
 end
 
-local function GetShinyPityFromModule()
-    local petId = GetTargetPetId()
+function Evolink:GetShinyPityFromModule()
+    local petId = self:GetTargetPetId()
     if not petId then return nil, nil end
     if ShinyPetLotteryService and ShinyPetLotteryService.getPityInfo then
         local ok, code, info = pcall(function() return ShinyPetLotteryService.getPityInfo(petId) end)
@@ -387,31 +417,31 @@ local function GetShinyPityFromModule()
     return nil, nil
 end
 
-local function GetPrismaticPity()
-    local current, max = GetPrismaticPityFromModule()
+function Evolink:GetPrismaticPity()
+    local current, max = self:GetPrismaticPityFromModule()
     if current ~= nil and max ~= nil then return current, max end
-    if PityCache.prismaticCurrent and PityCache.prismaticMax then
-        return PityCache.prismaticCurrent, PityCache.prismaticMax
+    if self.PityCache.prismaticCurrent and self.PityCache.prismaticMax then
+        return self.PityCache.prismaticCurrent, self.PityCache.prismaticMax
     end
     return nil, nil
 end
 
-local function GetShinyPity()
-    local current, max = GetShinyPityFromModule()
+function Evolink:GetShinyPity()
+    local current, max = self:GetShinyPityFromModule()
     if current ~= nil and max ~= nil then return current, max end
-    if PityCache.shinyCurrent and PityCache.shinyMax then
-        return PityCache.shinyCurrent, PityCache.shinyMax
+    if self.PityCache.shinyCurrent and self.PityCache.shinyMax then
+        return self.PityCache.shinyCurrent, self.PityCache.shinyMax
     end
     return nil, nil
 end
 
-local function IsPityMaxed()
-    local current, max = GetPrismaticPity()
+function Evolink:IsPityMaxed()
+    local current, max = self:GetPrismaticPity()
     if type(current) ~= "number" or type(max) ~= "number" then return nil end
     return current >= (max - 1)
 end
 
-local function IsCurrentTargetShiny()
+function Evolink:IsCurrentTargetShiny()
     local success, result = pcall(function()
         local window = BattleCatchPetWindowController.getWindow()
         if window and typeof(window.data) == "table" then
@@ -425,7 +455,7 @@ local function IsCurrentTargetShiny()
     return nil
 end
 
-local function IsCurrentTargetColorful()
+function Evolink:IsCurrentTargetColorful()
     local success, result = pcall(function()
         local window = BattleCatchPetWindowController.getWindow()
         if window and typeof(window.data) == "table" then
@@ -439,7 +469,7 @@ local function IsCurrentTargetColorful()
     return nil
 end
 
-local function GetPetNameFromConfig(petId)
+function Evolink:GetPetNameFromConfig(petId)
     if not PetConfig or not petId then return nil end
     local petData = PetConfig[petId]
     if petData and typeof(petData) == "table" and petData.name then
@@ -448,7 +478,7 @@ local function GetPetNameFromConfig(petId)
     return nil
 end
 
-local function GetTargetModel()
+function Evolink:GetTargetModel()
     local success, result = pcall(function()
         local window = BattleCatchPetWindowController.getWindow()
         if window and typeof(window.data) == "table" then
@@ -471,7 +501,7 @@ local function GetTargetModel()
                 if typeof(data.configId) == "number" then petId = data.configId end
             end
             if petId then
-                local configName = GetPetNameFromConfig(petId)
+                local configName = self:GetPetNameFromConfig(petId)
                 if configName then return configName end
             end
             local model = data.targetPetModel
@@ -489,10 +519,10 @@ local function GetTargetModel()
     return "Unknown"
 end
 
-local function BuildTargetLabel()
-    local model = GetTargetModel()
-    local shiny = IsCurrentTargetShiny()
-    local colorful = IsCurrentTargetColorful()
+function Evolink:BuildTargetLabel()
+    local model = self:GetTargetModel()
+    local shiny = self:IsCurrentTargetShiny()
+    local colorful = self:IsCurrentTargetColorful()
     local tags = {}
     if shiny == true then table.insert(tags, "Shiny")
     elseif shiny == false then table.insert(tags, "Unshiny")
@@ -503,14 +533,14 @@ local function BuildTargetLabel()
     return tostring(model) .. " (" .. table.concat(tags, "/") .. ")"
 end
 
-local function LeaveBattle()
+function Evolink:LeaveBattle()
     local success = pcall(function()
         BattleRemote:InvokeServer(unpack({{ actionType = 8 }}))
     end)
     return success
 end
 
-local function PerformCatch(itemId)
+function Evolink:PerformCatch(itemId)
     local success = pcall(function()
         BattleRemote:InvokeServer(unpack({{
             sourcePos = 1, targetPos = 1,
@@ -520,10 +550,10 @@ local function PerformCatch(itemId)
     return success
 end
 
-local function DoCatch(preferredBall)
-    local ballName, ballId = GetAvailableBall(preferredBall)
+function Evolink:DoCatch(preferredBall)
+    local ballName, ballId = self:GetAvailableBall(preferredBall)
     if not ballId then
-        if Config.UseSoftCatch then
+        if self.Config.UseSoftCatch then
             return "catch", BALLS.SoftCatch, "SoftCatch", false
         end
         return "wait", nil, nil, false
@@ -531,70 +561,70 @@ local function DoCatch(preferredBall)
     return "catch", ballId, ballName, true
 end
 
-local function DecideAction()
-    if not IsCatchWindowActive() then return "wait", nil, nil, false end
-    UpdateBallInventory()
-    local shiny = IsCurrentTargetShiny()
-    local pityMaxed = IsPityMaxed()
-    local mode = Config.HuntMode
+function Evolink:DecideAction()
+    if not self:IsCatchWindowActive() then return "wait", nil, nil, false end
+    self:UpdateBallInventory()
+    local shiny = self:IsCurrentTargetShiny()
+    local pityMaxed = self:IsPityMaxed()
+    local mode = self.Config.HuntMode
     if pityMaxed == nil then return "wait", nil, nil, false end
     if shiny == nil then shiny = false end
 
     if mode == "PrismaticShiny" then
-        if shiny == true and pityMaxed == true then return DoCatch(Config.Shiny_PityMax) end
+        if shiny == true and pityMaxed == true then return self:DoCatch(self.Config.Shiny_PityMax) end
         if shiny == true and pityMaxed == false then return "flee", nil, nil, false end
         if shiny == false and pityMaxed == true then return "flee", nil, nil, false end
         if shiny == false and pityMaxed == false then
-            if Config.UseSoftCatch then return "catch", BALLS.SoftCatch, "SoftCatch", false end
-            return DoCatch(Config.NonShiny_NoPity)
+            if self.Config.UseSoftCatch then return "catch", BALLS.SoftCatch, "SoftCatch", false end
+            return self:DoCatch(self.Config.NonShiny_NoPity)
         end
     end
 
     if mode == "ShinyOnly" then
-        if shiny == true and pityMaxed == true then return DoCatch(Config.Shiny_PityMax) end
+        if shiny == true and pityMaxed == true then return self:DoCatch(self.Config.Shiny_PityMax) end
         if shiny == true and pityMaxed == false then
-            if Config.FleeFromShiny then return "flee", nil, nil, false end
-            return DoCatch(Config.Shiny_NoPity)
+            if self.Config.FleeFromShiny then return "flee", nil, nil, false end
+            return self:DoCatch(self.Config.Shiny_NoPity)
         end
         if shiny == false and pityMaxed == true then return "flee", nil, nil, false end
         if shiny == false and pityMaxed == false then
-            if Config.UseSoftCatch then return "catch", BALLS.SoftCatch, "SoftCatch", false end
-            return DoCatch(Config.NonShiny_NoPity)
+            if self.Config.UseSoftCatch then return "catch", BALLS.SoftCatch, "SoftCatch", false end
+            return self:DoCatch(self.Config.NonShiny_NoPity)
         end
     end
 
     if mode == "PrismaticOnly" then
-        if shiny == true and pityMaxed == true then return DoCatch(Config.Shiny_PityMax) end
+        if shiny == true and pityMaxed == true then return self:DoCatch(self.Config.Shiny_PityMax) end
         if shiny == true and pityMaxed == false then
-            if Config.FleeFromShiny then return "flee", nil, nil, false end
-            return DoCatch(Config.Shiny_NoPity)
+            if self.Config.FleeFromShiny then return "flee", nil, nil, false end
+            return self:DoCatch(self.Config.Shiny_NoPity)
         end
-        if shiny == false and pityMaxed == true then return DoCatch(Config.NonShiny_PityMax) end
+        if shiny == false and pityMaxed == true then return self:DoCatch(self.Config.NonShiny_PityMax) end
         if shiny == false and pityMaxed == false then
-            if Config.UseSoftCatch then return "catch", BALLS.SoftCatch, "SoftCatch", false end
-            return DoCatch(Config.NonShiny_NoPity)
+            if self.Config.UseSoftCatch then return "catch", BALLS.SoftCatch, "SoftCatch", false end
+            return self:DoCatch(self.Config.NonShiny_NoPity)
         end
     end
 
     if mode == "Both" then
-        if shiny == true and pityMaxed == true then return DoCatch(Config.Shiny_PityMax) end
+        if shiny == true and pityMaxed == true then return self:DoCatch(self.Config.Shiny_PityMax) end
         if shiny == true and pityMaxed == false then
-            if Config.FleeFromShiny then return "flee", nil, nil, false end
-            return DoCatch(Config.Shiny_NoPity)
+            if self.Config.FleeFromShiny then return "flee", nil, nil, false end
+            return self:DoCatch(self.Config.Shiny_NoPity)
         end
         if shiny == false and pityMaxed == true then
-            if Config.FleeNonShinyAtPityMax then return "flee", nil, nil, false end
-            return DoCatch(Config.NonShiny_PityMax)
+            if self.Config.FleeNonShinyAtPityMax then return "flee", nil, nil, false end
+            return self:DoCatch(self.Config.NonShiny_PityMax)
         end
         if shiny == false and pityMaxed == false then
-            if Config.UseSoftCatch then return "catch", BALLS.SoftCatch, "SoftCatch", false end
-            return DoCatch(Config.NonShiny_NoPity)
+            if self.Config.UseSoftCatch then return "catch", BALLS.SoftCatch, "SoftCatch", false end
+            return self:DoCatch(self.Config.NonShiny_NoPity)
         end
     end
     return "wait", nil, nil, false
 end
 
-local function GetCreatureModelCache()
+function Evolink:GetCreatureModelCache()
     local ok, cache = pcall(function()
         return Workspace:WaitForChild("RuntimeCache"):WaitForChild("RuntimeCacheServer"):WaitForChild("CreatureModelCache")
     end)
@@ -602,10 +632,10 @@ local function GetCreatureModelCache()
     return nil
 end
 
-local function FindTargetCreatures()
-    local cache = GetCreatureModelCache()
+function Evolink:FindTargetCreatures()
+    local cache = self:GetCreatureModelCache()
     if not cache then return {} end
-    local targets = GetCurrentTargets()
+    local targets = self:GetCurrentTargets()
     if not targets then return {} end
     local found = {}
     for _, child in ipairs(cache:GetChildren()) do
@@ -620,13 +650,13 @@ local function FindTargetCreatures()
     return found
 end
 
-local function FireEncounter(creatureId)
+function Evolink:FireEncounter(creatureId)
     if not creatureId then return false end
     local ok = pcall(function() ReqEnterPetBattle:FireServer(creatureId) end)
     return ok
 end
 
-local function GetControllerManager()
+function Evolink:GetControllerManager()
     local core = ReplicatedStorage:FindFirstChild("Core")
     if not core then return nil end
     local controller = core:FindFirstChild("Controller")
@@ -636,19 +666,18 @@ local function GetControllerManager()
     return require(cm)
 end
 
-local function GetMainBattleController()
-    local cm = GetControllerManager()
+function Evolink:GetMainBattleController()
+    local cm = self:GetControllerManager()
     if not cm then return nil end
     return cm.getController("MainBattleWindowController")
 end
 
-local function ApplyFastBattle()
-    local controller = GetMainBattleController()
+function Evolink:ApplyFastBattle()
+    local controller = self:GetMainBattleController()
     if not controller then return false end
-    if FastBattleState.hooked then return true end
-    FastBattleState.originalGetSpeed = controller.getBattlePlaybackSpeed
-    FastBattleState.originalIsEnabled = controller.isBattleSpeedEnabled
-
+    if self.FastBattleState.hooked then return true end
+    self.FastBattleState.originalGetSpeed = controller.getBattlePlaybackSpeed
+    self.FastBattleState.originalIsEnabled = controller.isBattleSpeedEnabled
     controller.getBattlePlaybackSpeed = function(...)
         local BattleService = nil
         pcall(function()
@@ -657,9 +686,8 @@ local function ApplyFastBattle()
             BattleService = require(Battle:WaitForChild("BattleService"))
         end)
         if BattleService and BattleService.getCurrentBattle() then return 25 end
-        return FastBattleState.originalGetSpeed(...)
+        return self.FastBattleState.originalGetSpeed(...)
     end
-
     controller.isBattleSpeedEnabled = function(...)
         local BattleService = nil
         pcall(function()
@@ -668,72 +696,85 @@ local function ApplyFastBattle()
             BattleService = require(Battle:WaitForChild("BattleService"))
         end)
         if BattleService and BattleService.getCurrentBattle() then return true end
-        return FastBattleState.originalIsEnabled(...)
+        return self.FastBattleState.originalIsEnabled(...)
     end
-
-    FastBattleState.hooked = true
-    FastBattleState.enabled = true
-    print("[Evolink] FastBattle Started")
+    self.FastBattleState.hooked = true
+    self.FastBattleState.enabled = true
     return true
 end
 
-local function RemoveFastBattle()
-    if not FastBattleState.hooked then return end
-    local controller = GetMainBattleController()
+function Evolink:RemoveFastBattle()
+    if not self.FastBattleState.hooked then return end
+    local controller = self:GetMainBattleController()
     if controller then
-        if FastBattleState.originalGetSpeed then controller.getBattlePlaybackSpeed = FastBattleState.originalGetSpeed end
-        if FastBattleState.originalIsEnabled then controller.isBattleSpeedEnabled = FastBattleState.originalIsEnabled end
+        if self.FastBattleState.originalGetSpeed then controller.getBattlePlaybackSpeed = self.FastBattleState.originalGetSpeed end
+        if self.FastBattleState.originalIsEnabled then controller.isBattleSpeedEnabled = self.FastBattleState.originalIsEnabled end
     end
-    FastBattleState.hooked = false
-    FastBattleState.enabled = false
-    print("[Evolink] FastBattle Ended")
+    self.FastBattleState.hooked = false
+    self.FastBattleState.enabled = false
 end
 
-local function ToggleFastBattle()
-    if FastBattleState.enabled then RemoveFastBattle() else ApplyFastBattle() end
-    return FastBattleState.enabled
+function Evolink:ToggleFastBattle()
+    if self.FastBattleState.enabled then self:RemoveFastBattle() else self:ApplyFastBattle() end
+    return self.FastBattleState.enabled
 end
 
-local function getCurrentBattleData()
-    local BattleService = require(Script:WaitForChild("Battle"):WaitForChild("BattleService"))
-    local battle = BattleService.getCurrentBattle()
-    if battle and typeof(battle) == "table" then return battle end
-    local ControllerManager = require(Core:WaitForChild("Controller"):WaitForChild("ControllerManager"))
-    local mainController = ControllerManager.getController("MainBattleWindowController")
-    if mainController and mainController.getBattleDataCache then
-        return mainController.getBattleDataCache()
+function Evolink:getCurrentBattleData()
+    local BattleService = nil
+    pcall(function()
+        BattleService = require(Script:WaitForChild("Battle"):WaitForChild("BattleService"))
+    end)
+    if BattleService then
+        local battle = BattleService.getCurrentBattle()
+        if battle and typeof(battle) == "table" then return battle end
+    end
+    local ControllerManager = nil
+    pcall(function()
+        ControllerManager = require(Core:WaitForChild("Controller"):WaitForChild("ControllerManager"))
+    end)
+    if ControllerManager then
+        local mainController = ControllerManager.getController("MainBattleWindowController")
+        if mainController and mainController.getBattleDataCache then
+            return mainController.getBattleDataCache()
+        end
     end
     return nil
 end
 
-local function getAllLocalPets(battleData)
+function Evolink:getAllLocalPets(battleData)
     if not battleData or typeof(battleData) ~= "table" then return {} end
+    if not BattleDataGetModule then return {} end
     local activePets = BattleDataGetModule.getActivePetsData(battleData)
     if not activePets or not activePets.selfPets then return {} end
     return activePets.selfPets
 end
 
-local function getAllEnemyPets(battleData)
+function Evolink:getAllEnemyPets(battleData)
     if not battleData or typeof(battleData) ~= "table" then return {} end
+    if not BattleDataGetModule then return {} end
     local activePets = BattleDataGetModule.getActivePetsData(battleData)
     if not activePets or not activePets.enemyPets then return {} end
     return activePets.enemyPets
 end
 
-local function getKillOrderTargets(battleData)
-    local BattleService = require(Script:WaitForChild("Battle"):WaitForChild("BattleService"))
+function Evolink:getKillOrderTargets(battleData)
+    local BattleService = nil
+    pcall(function()
+        BattleService = require(Script:WaitForChild("Battle"):WaitForChild("BattleService"))
+    end)
+    if not BattleService then return nil end
     local success, result = pcall(function() return BattleService.getSequenceKillOrder(battleData) end)
     if success and typeof(result) == "table" and #result > 0 then return result end
     return nil
 end
 
-local function getOrderedTarget(battleData)
-    local killOrder = getKillOrderTargets(battleData)
+function Evolink:getOrderedTarget(battleData)
+    local killOrder = self:getKillOrderTargets(battleData)
     if not killOrder then return nil end
     for _, targetInfo in ipairs(killOrder) do
         if typeof(targetInfo) == "table" and typeof(targetInfo.uid) == "string" then
             if targetInfo.aliveState == 1 then
-                local allEnemies = getAllEnemyPets(battleData)
+                local allEnemies = self:getAllEnemyPets(battleData)
                 for _, enemy in ipairs(allEnemies) do
                     if typeof(enemy) == "table" and enemy.uid == targetInfo.uid then
                         return enemy
@@ -746,12 +787,12 @@ local function getOrderedTarget(battleData)
     return nil
 end
 
-local function getPrimaryTarget(battleData)
-    if Config.SkillPreferKillOrder then
-        local orderedTarget = getOrderedTarget(battleData)
+function Evolink:getPrimaryTarget(battleData)
+    if self.Config.SkillPreferKillOrder then
+        local orderedTarget = self:getOrderedTarget(battleData)
         if orderedTarget then return orderedTarget end
     end
-    local allEnemies = getAllEnemyPets(battleData)
+    local allEnemies = self:getAllEnemyPets(battleData)
     for _, enemy in ipairs(allEnemies) do
         if typeof(enemy) == "table" and BattleDataGetModule.isAliveBattlePet(enemy) then
             return enemy
@@ -760,9 +801,10 @@ local function getPrimaryTarget(battleData)
     return allEnemies[1]
 end
 
-local function getPetElementIdList(configId)
+function Evolink:getPetElementIdList(configId)
     local t = {}
     if typeof(configId) ~= "number" then return t end
+    if not ConfigDataManager then return t end
     local petConfig = ConfigDataManager.getConfig(ConfigConst.ConfigName.PET, configId)
     if typeof(petConfig) ~= "table" then return t end
     if typeof(petConfig.elements) ~= "table" then return t end
@@ -772,7 +814,7 @@ local function getPetElementIdList(configId)
     return t
 end
 
-local function calculateSkillEffectiveness(skillConfig, targetElementIdList)
+function Evolink:calculateSkillEffectiveness(skillConfig, targetElementIdList)
     if typeof(skillConfig) ~= "table" then
         return ElementConst.ElementEffect.NOTHING, 0, 0
     end
@@ -798,16 +840,16 @@ local function calculateSkillEffectiveness(skillConfig, targetElementIdList)
     return effect, multiplier, estimatedPower
 end
 
-local function calculateAoeEffectiveness(skillConfig, battleData)
+function Evolink:calculateAoeEffectiveness(skillConfig, battleData)
     if typeof(skillConfig) ~= "table" then return nil, 0, 0 end
-    local allEnemies = getAllEnemyPets(battleData)
+    local allEnemies = self:getAllEnemyPets(battleData)
     if #allEnemies == 0 then return nil, 0, 0 end
     local totalEstPower, totalMultiplier, bestEffect, bestPriority, aliveCount = 0, 0, ElementConst.ElementEffect.NORMAL, 1, 0
     for _, enemy in ipairs(allEnemies) do
         if typeof(enemy) == "table" and BattleDataGetModule.isAliveBattlePet(enemy) then
             aliveCount = aliveCount + 1
-            local elements = getPetElementIdList(enemy.configId)
-            local effect, mult, estPower = calculateSkillEffectiveness(skillConfig, elements)
+            local elements = self:getPetElementIdList(enemy.configId)
+            local effect, mult, estPower = self:calculateSkillEffectiveness(skillConfig, elements)
             totalEstPower = totalEstPower + estPower
             totalMultiplier = totalMultiplier + mult
             local priority = EFFECTIVENESS_MULTIPLIER[effect] or 1
@@ -818,9 +860,9 @@ local function calculateAoeEffectiveness(skillConfig, battleData)
     return bestEffect, totalMultiplier / aliveCount, math.floor(totalEstPower / aliveCount)
 end
 
-local function findBestTargetForSkill(battleData, skillConfig)
+function Evolink:findBestTargetForSkill(battleData, skillConfig)
     if typeof(skillConfig) ~= "table" then return nil, nil, nil, nil, 0, 0 end
-    local allEnemies = getAllEnemyPets(battleData)
+    local allEnemies = self:getAllEnemyPets(battleData)
     if #allEnemies == 0 then return nil, nil, nil, nil, 0, 0 end
     local bestEnemy, bestScore, bestPos, bestCampId, bestEffect, bestMultiplier, bestEstPower = nil, -99999, nil, nil, ElementConst.ElementEffect.NORMAL, 1.0, 0
     local enemyCampId = BattleDataGetModule.getEnemyCampId(battleData)
@@ -828,11 +870,10 @@ local function findBestTargetForSkill(battleData, skillConfig)
     local enemyCamp = nil
     if battleData.camp1 and battleData.camp1.campId == enemyCampId then enemyCamp = battleData.camp1
     elseif battleData.camp2 and battleData.camp2.campId == enemyCampId then enemyCamp = battleData.camp2 end
-
     for _, enemy in ipairs(allEnemies) do
         if typeof(enemy) == "table" and BattleDataGetModule.isAliveBattlePet(enemy) then
-            local elements = getPetElementIdList(enemy.configId)
-            local effect, multiplier, estPower = calculateSkillEffectiveness(skillConfig, elements)
+            local elements = self:getPetElementIdList(enemy.configId)
+            local effect, multiplier, estPower = self:calculateSkillEffectiveness(skillConfig, elements)
             local effPriority = EFFECTIVENESS_PRIORITY[effect] or 3
             local score = (effPriority * 10000) + estPower
             if score > bestScore then
@@ -856,14 +897,14 @@ local function findBestTargetForSkill(battleData, skillConfig)
     return bestEnemy, bestPos or 1, bestCampId, bestEffect, bestMultiplier, bestEstPower
 end
 
-local function needsHealing(pet)
+function Evolink:needsHealing(pet)
     if typeof(pet) ~= "table" then return false end
     local currHp, maxHp = pet.currHp or 0, pet.maxHp or 1
     if maxHp <= 0 then return false end
-    return (currHp / maxHp) < Config.SkillHealThreshold
+    return (currHp / maxHp) < self.Config.SkillHealThreshold
 end
 
-local function scoreSkill(skillData, battleData, currentEnergy)
+function Evolink:scoreSkill(skillData, battleData, currentEnergy)
     if typeof(skillData) ~= "table" then return -9999, nil, 0, false, false, 0, nil, nil, nil end
     local skillId = skillData.id
     if typeof(skillId) ~= "number" then return -9999, nil, 0, false, false, 0, nil, nil, nil end
@@ -875,7 +916,6 @@ local function scoreSkill(skillData, battleData, currentEnergy)
     local isEnergyMove = skillConfig.skillType == 2
     local energyCost = skillConfig.energyCost or 0
     local basePower = skillConfig.power or 0
-
     if isEnergyMove and energyCost > 0 then
         if typeof(currentEnergy) ~= "number" or currentEnergy < energyCost then
             return -9999, nil, 0, false, false, 0, nil, nil, nil
@@ -887,7 +927,6 @@ local function scoreSkill(skillData, battleData, currentEnergy)
             return -9999, nil, 0, false, false, 0, nil, nil, nil
         end
     end
-
     local isHeal = false
     if basePower == 0 and skillCategory == 3 then
         local skillName = (skillConfig.name or ""):lower()
@@ -895,51 +934,44 @@ local function scoreSkill(skillData, battleData, currentEnergy)
     end
     if isHeal then return -350, nil, 0, true, true, 1, nil, nil, nil end
     if skillCategory == 3 and basePower <= 0 then return -450, nil, 0, true, false, 0, nil, nil, nil end
-
     local effect, multiplier, estimatedPower
     local targetCount = 1
     local bestTargetEnemy, bestTargetPos, bestTargetCampId = nil, nil, nil
-
     if targetType == SKILL_TARGET.ALL or targetType == SKILL_TARGET.ENEMY_TEAM then
-        if not Config.SkillAllowMultiTarget then return -9999, nil, 0, false, false, 0, nil, nil, nil end
-        bestTargetEnemy, bestTargetPos, bestTargetCampId, effect, multiplier, estimatedPower = findBestTargetForSkill(battleData, skillConfig)
-        local _, _, aoeAvgPower = calculateAoeEffectiveness(skillConfig, battleData)
-        targetCount = #getAllEnemyPets(battleData)
+        if not self.Config.SkillAllowMultiTarget then return -9999, nil, 0, false, false, 0, nil, nil, nil end
+        bestTargetEnemy, bestTargetPos, bestTargetCampId, effect, multiplier, estimatedPower = self:findBestTargetForSkill(battleData, skillConfig)
+        local _, _, aoeAvgPower = self:calculateAoeEffectiveness(skillConfig, battleData)
+        targetCount = #self:getAllEnemyPets(battleData)
         estimatedPower = aoeAvgPower
     elseif targetType == SKILL_TARGET.SELF or targetType == SKILL_TARGET.TEAM then
         return -100, nil, 0, true, false, 0, nil, nil, nil
     else
-        bestTargetEnemy, bestTargetPos, bestTargetCampId, effect, multiplier, estimatedPower = findBestTargetForSkill(battleData, skillConfig)
+        bestTargetEnemy, bestTargetPos, bestTargetCampId, effect, multiplier, estimatedPower = self:findBestTargetForSkill(battleData, skillConfig)
     end
-
     local penalty = 0
     if effect == ElementConst.ElementEffect.WEAK then penalty = -300
     elseif effect == ElementConst.ElementEffect.NOTHING then penalty = -500 end
-
     local effectivenessBonus = 0
     if effect == ElementConst.ElementEffect.EXTREMELY then effectivenessBonus = 10000
     elseif effect == ElementConst.ElementEffect.SUPER then effectivenessBonus = 5000
     elseif effect == ElementConst.ElementEffect.STRONG then effectivenessBonus = 2000 end
-
     local aoeBonus = 0
     if targetCount > 1 then aoeBonus = estimatedPower * (targetCount - 1) * 0.8 end
-
     local score = estimatedPower + effectivenessBonus + aoeBonus + penalty
     return score, effect, estimatedPower, true, false, targetCount, bestTargetEnemy, bestTargetPos, bestTargetCampId
 end
 
-local function getAllScoredSkillsForPet(battleData, pet)
+function Evolink:getAllScoredSkillsForPet(battleData, pet)
     if not pet then return {} end
     local skills = pet.skills
     if typeof(skills) ~= "table" then return {} end
     local trainer = BattleDataGetModule.getLocalPlayerTrainer(battleData)
     local currentEnergy = (trainer and typeof(trainer.energy) == "number") and trainer.energy or 0
     local scoredSkills = {}
-
     for i = 1, 4 do
         local skillData = skills[i]
-        local score, effect, estPower, canUse, isHeal, targetCount, bestEnemy, bestPos, bestCampId = scoreSkill(skillData, battleData, currentEnergy)
-        if isHeal and needsHealing(pet) then score = 10000 end
+        local score, effect, estPower, canUse, isHeal, targetCount, bestEnemy, bestPos, bestCampId = self:scoreSkill(skillData, battleData, currentEnergy)
+        if isHeal and self:needsHealing(pet) then score = 10000 end
         if canUse then
             table.insert(scoredSkills, {
                 index = i, score = score, effect = effect, estPower = estPower,
@@ -952,7 +984,7 @@ local function getAllScoredSkillsForPet(battleData, pet)
     return scoredSkills
 end
 
-local function getSourcePosForPet(battleData, pet)
+function Evolink:getSourcePosForPet(battleData, pet)
     if not pet or typeof(pet) ~= "table" then return 1 end
     local localCampId = BattleDataGetModule.getLocalPlayerCampId(battleData)
     if not localCampId then return 1 end
@@ -969,7 +1001,7 @@ local function getSourcePosForPet(battleData, pet)
     return 1
 end
 
-local function getTargetInfo(battleData, skillConfig, precomputedTarget)
+function Evolink:getTargetInfo(battleData, skillConfig, precomputedTarget)
     if not battleData then return nil, nil end
     local enemyCampId = BattleDataGetModule.getEnemyCampId(battleData)
     if not enemyCampId then return nil, nil end
@@ -977,10 +1009,9 @@ local function getTargetInfo(battleData, skillConfig, precomputedTarget)
         return precomputedTarget.bestCampId, precomputedTarget.bestPos
     end
     local targetType = skillConfig and skillConfig.targetType or 1
-
     if targetType == SKILL_TARGET.ALL or targetType == SKILL_TARGET.ENEMY_TEAM then
-        if Config.SkillPreferKillOrder then
-            local orderedTarget = getOrderedTarget(battleData)
+        if self.Config.SkillPreferKillOrder then
+            local orderedTarget = self:getOrderedTarget(battleData)
             if orderedTarget and typeof(orderedTarget) == "table" then
                 local camp = nil
                 if battleData.camp1 and battleData.camp1.campId == enemyCampId then camp = battleData.camp1
@@ -994,13 +1025,12 @@ local function getTargetInfo(battleData, skillConfig, precomputedTarget)
                 end
             end
         end
-        local _, bestPos, bestCampId = findBestTargetForSkill(battleData, skillConfig)
+        local _, bestPos, bestCampId = self:findBestTargetForSkill(battleData, skillConfig)
         if bestPos then return bestCampId or enemyCampId, bestPos end
         return enemyCampId, 1
     end
-
-    if Config.SkillPreferKillOrder then
-        local orderedTarget = getOrderedTarget(battleData)
+    if self.Config.SkillPreferKillOrder then
+        local orderedTarget = self:getOrderedTarget(battleData)
         if orderedTarget and typeof(orderedTarget) == "table" then
             local camp = nil
             if battleData.camp1 and battleData.camp1.campId == enemyCampId then camp = battleData.camp1
@@ -1014,7 +1044,6 @@ local function getTargetInfo(battleData, skillConfig, precomputedTarget)
             end
         end
     end
-
     local activePets = BattleDataGetModule.getActivePetsData(battleData)
     if activePets and activePets.enemyPets then
         for pos, pet in ipairs(activePets.enemyPets) do
@@ -1026,7 +1055,7 @@ local function getTargetInfo(battleData, skillConfig, precomputedTarget)
     return enemyCampId, 1
 end
 
-local function getSkillIdFromPet(pet, index)
+function Evolink:getSkillIdFromPet(pet, index)
     if not pet then return nil end
     local skills = pet.skills
     if typeof(skills) ~= "table" then return nil end
@@ -1035,282 +1064,201 @@ local function getSkillIdFromPet(pet, index)
     return skillData.id
 end
 
-local function executeSkillForPet(battleData, pet, skillIndex, precomputedTarget)
+function Evolink:executeSkillForPet(battleData, pet, skillIndex, precomputedTarget)
     if not pet or not skillIndex then return false, nil end
-    local skillId = getSkillIdFromPet(pet, skillIndex)
-    if not skillId then
-        if Config.SkillDebugMode then warn("Could not get skill ID for pet") end
-        return false, nil
-    end
+    local skillId = self:getSkillIdFromPet(pet, skillIndex)
+    if not skillId then return false, nil end
     local skillConfig = ConfigDataManager.getConfig(ConfigConst.ConfigName.SKILL, skillId)
-    local targetCampId, targetPos = getTargetInfo(battleData, skillConfig, precomputedTarget)
-    if not targetCampId or not targetPos then
-        if Config.SkillDebugMode then warn("No valid target found") end
-        return false, nil
-    end
-    local sourcePos = getSourcePosForPet(battleData, pet)
+    local targetCampId, targetPos = self:getTargetInfo(battleData, skillConfig, precomputedTarget)
+    if not targetCampId or not targetPos then return false, nil end
+    local sourcePos = self:getSourcePosForPet(battleData, pet)
     local args = {{
         skillType = skillConfig and skillConfig.skillType or 1,
         targetPos = targetPos, sourcePos = sourcePos,
         actionType = 1, targetCampId = targetCampId, skillId = skillId
     }}
-    local skillName = skillConfig and skillConfig.name or "Unknown"
-    local targetTypeName = skillConfig and skillConfig.targetType or 1
-    local isAoe = (targetTypeName == SKILL_TARGET.ALL or targetTypeName == SKILL_TARGET.ENEMY_TEAM)
-
-    if Config.SkillDebugMode then
-        print(string.format("[Evolink] Pet %d (%s) uses %s (ID: %d) | Target: Camp %d Pos %d | AOE: %s",
-            sourcePos, pet.name or "Pet", skillName, skillId, targetCampId, targetPos, tostring(isAoe)))
-    end
-
     local success, result = pcall(function() return ReqOperateBattle:InvokeServer(unpack(args)) end)
     if success then
         if VALID_RESPONSES[result] == true then return true, result
         else return false, result end
     else
-        if Config.SkillDebugMode then warn("[Evolink] Invoke failed:", result) end
         return false, nil
     end
 end
 
-local function executeBestSkillsForAllPets()
-    local battleData = getCurrentBattleData()
-    if not battleData then
-        if Config.SkillDebugMode then warn("No active battle found") end
-        return false
-    end
-    local allPets = getAllLocalPets(battleData)
-    if #allPets == 0 then
-        if Config.SkillDebugMode then warn("No pets found") end
-        return false
-    end
-
-    if Config.SkillDebugMode then print("\n=== Evaluating ALL Pets ===") end
+function Evolink:executeBestSkillsForAllPets()
+    local battleData = self:getCurrentBattleData()
+    if not battleData then return false end
+    local allPets = self:getAllLocalPets(battleData)
+    if #allPets == 0 then return false end
     local allMoves = {}
-
     for petIndex, pet in ipairs(allPets) do
         if typeof(pet) == "table" and BattleDataGetModule.isAliveBattlePet(pet) then
-            local scoredSkills = getAllScoredSkillsForPet(battleData, pet)
+            local scoredSkills = self:getAllScoredSkillsForPet(battleData, pet)
             local petName = "Unknown"
             if pet.configId then
                 local petConfig = ConfigDataManager.getConfig(ConfigConst.ConfigName.PET, pet.configId)
                 petName = petConfig and petConfig.name or "Unknown"
             end
-            local sourcePos = getSourcePosForPet(battleData, pet)
+            local sourcePos = self:getSourcePosForPet(battleData, pet)
             if #scoredSkills > 0 then
                 table.insert(allMoves, {
                     pet = pet, scoredSkills = scoredSkills, currentSkillIndex = 1,
                     sourcePos = sourcePos, petName = petName, bestScore = scoredSkills[1].score
                 })
-                if Config.SkillDebugMode then
-                    print(string.format("  Pet [%d] %s (Pos: %d) | Best: Skill %d | Score: %d | Effect: %s | Target: Pos %d",
-                        petIndex, petName, sourcePos, scoredSkills[1].index, scoredSkills[1].score,
-                        scoredSkills[1].effect and EFFECTIVENESS_NAMES[scoredSkills[1].effect] or "nil",
-                        scoredSkills[1].bestPos or 1))
-                end
             end
         end
     end
-
-    if Config.SkillDebugMode then print("===========================\n") end
-    if #allMoves == 0 then
-        if Config.SkillDebugMode then warn("No valid moves for any pet") end
-        return false
-    end
-
+    if #allMoves == 0 then return false end
     table.sort(allMoves, function(a, b) return a.bestScore > b.bestScore end)
     local anySuccess = false
-
     for _, move in ipairs(allMoves) do
         local pet = move.pet
         local scoredSkills = move.scoredSkills
         local skillTried, success, resultCode = 0, false, nil
-
         for i, sk in ipairs(scoredSkills) do
             skillTried = skillTried + 1
-            if Config.SkillDebugMode then
-                print(string.format("[Evolink] Pet %d (%s) | Fallback [%d/%d] | Skill %d | Score: %d | Effect: %s",
-                    move.sourcePos, move.petName, i, #scoredSkills, sk.index, sk.score,
-                    sk.effect and EFFECTIVENESS_NAMES[sk.effect] or "nil"))
-            end
-            success, resultCode = executeSkillForPet(battleData, pet, sk.index, sk)
+            success, resultCode = self:executeSkillForPet(battleData, pet, sk.index, sk)
             if success then
                 anySuccess = true
-                if not Config.SkillFastMode then task.wait(0.2) end
+                if not self.Config.SkillFastMode then task.wait(0.2) end
                 break
             else
                 if resultCode == 27811 then break end
                 if resultCode and MOVE_DISABLED_CODES[resultCode] then
-                    if Config.SkillDebugMode then print(string.format("[Evolink] Move disabled (code: %d), trying next fallback...", resultCode)) end
                 else
-                    if Config.SkillDebugMode then print(string.format("[Evolink] Move failed (code: %s), stopping fallback chain.", tostring(resultCode))) end
                     break
                 end
             end
         end
-
-        if not success and skillTried >= #scoredSkills then
-            if Config.SkillDebugMode then
-                print(string.format("[Evolink] All %d moves failed for Pet %d (%s)", #scoredSkills, move.sourcePos, move.petName))
-            end
-        end
-        battleData = getCurrentBattleData()
+        battleData = self:getCurrentBattleData()
         if not battleData then break end
     end
     return anySuccess
 end
 
-local function startAutoBattle(interval)
-    interval = interval or Config.SkillInterval
-    autoBattleEnabled = true
-    if Config.SkillDebugMode then
-        print("[Evolink] Auto-battle started")
-        print("[Evolink] Interval:", interval)
-        print("[Evolink] FastMode:", Config.SkillFastMode)
-        print("[Evolink] Debug:", Config.SkillDebugMode)
-    end
-    if autoBattleThread then autoBattleThread = nil end
-    autoBattleThread = task.spawn(function()
-        while autoBattleEnabled do
-            local battleData = getCurrentBattleData()
+function Evolink:startAutoBattle(interval)
+    interval = interval or self.Config.SkillInterval
+    self.AutoBattleState.enabled = true
+    if self.AutoBattleState.thread then self.AutoBattleState.thread = nil end
+    self.AutoBattleState.thread = task.spawn(function()
+        while self.AutoBattleState.enabled do
+            local battleData = self:getCurrentBattleData()
             if battleData then
-                local success = executeBestSkillsForAllPets()
+                local success = self:executeBestSkillsForAllPets()
                 if success then task.wait(interval) else task.wait(0.2) end
             else
                 task.wait(1)
             end
         end
-        if Config.SkillDebugMode then print("[Evolink] Auto-battle loop ended") end
     end)
-    return autoBattleThread
+    return self.AutoBattleState.thread
 end
 
-local function stopAutoBattle()
-    autoBattleEnabled = false
-    autoBattleThread = nil
-    if Config.SkillDebugMode then print("[Evolink] Auto-battle stopped") end
+function Evolink:stopAutoBattle()
+    self.AutoBattleState.enabled = false
+    self.AutoBattleState.thread = nil
 end
 
-local function MainLoop()
-    while Running do
+function Evolink:MainLoop()
+    while self.Running do
         task.wait(0.3)
-
-        if not Config.HuntingEnabled and not Config.EncounterEnabled then
-            if FastBattleState.enabled then RemoveFastBattle() end
+        if not self.Config.HuntingEnabled and not self.Config.EncounterEnabled then
+            if self.FastBattleState.enabled then self:RemoveFastBattle() end
             continue
         end
-
-        if IsInBattle() then
-            if not Config.HuntingEnabled then
-                if FastBattleState.enabled then RemoveFastBattle() end
+        if self:IsInBattle() then
+            if not self.Config.HuntingEnabled then
+                if self.FastBattleState.enabled then self:RemoveFastBattle() end
                 continue
             end
-
-            if Config.FastBattle and not FastBattleState.enabled then
-                ApplyFastBattle()
+            if self.Config.FastBattle and not self.FastBattleState.enabled then
+                self:ApplyFastBattle()
             end
-
-            if not autoBattleEnabled then
-                startAutoBattle()
+            if not self.AutoBattleState.enabled then
+                self:startAutoBattle()
             end
-
-            local catchActive = IsCatchWindowActive()
-            if catchActive and not WasInCatchWindow then
-                WasInCatchWindow = true
-                UpdatePityCacheFromUI()
-                SessionStats.encounters = SessionStats.encounters + 1
+            local catchActive = self:IsCatchWindowActive()
+            if catchActive and not self.WasInCatchWindow then
+                self.WasInCatchWindow = true
+                self:UpdatePityCacheFromUI()
+                self.SessionStats.encounters = self.SessionStats.encounters + 1
             end
-            if catchActive then UpdatePityCacheFromUI() end
-
+            if catchActive then self:UpdatePityCacheFromUI() end
             if not catchActive then
-                if PendingLog then print(PendingLog); PendingLog = nil end
-                LastAction = nil
+                if self.PendingLog then print(self.PendingLog); self.PendingLog = nil end
+                self.LastAction = nil
                 continue
             end
-
-            if LastAction and (tick() - LastActionTime) < 1.5 then continue end
-
-            local targetLabel = BuildTargetLabel()
-            local shiny = IsCurrentTargetShiny()
-            local action, param, methodName, isGoalCatch = DecideAction()
+            if self.LastAction and (tick() - self.LastActionTime) < 1.5 then continue end
+            local targetLabel = self:BuildTargetLabel()
+            local shiny = self:IsCurrentTargetShiny()
+            local action, param, methodName, isGoalCatch = self:DecideAction()
             local method = methodName or BALL_NAMES[param] or (action == "flee" and "FLEE" or "WAIT")
-
             if action == "catch" and param then
-                PerformCatch(param)
-                SessionStats.catches = SessionStats.catches + 1
+                self:PerformCatch(param)
+                self.SessionStats.catches = self.SessionStats.catches + 1
                 if shiny == true then
-                    SessionStats.shinyEncounters = SessionStats.shinyEncounters + 1
-                    SessionStats.shinyCaught = SessionStats.shinyCaught + 1
+                    self.SessionStats.shinyEncounters = self.SessionStats.shinyEncounters + 1
+                    self.SessionStats.shinyCaught = self.SessionStats.shinyCaught + 1
                 end
-
-                if isGoalCatch and Config.StopOnCatch then
-                    SessionStats.goalCatches = SessionStats.goalCatches + 1
+                if isGoalCatch and self.Config.StopOnCatch then
+                    self.SessionStats.goalCatches = self.SessionStats.goalCatches + 1
                     print("[Evolink] GOAL TARGET CAUGHT! (" .. method .. ") Stopping farm.")
                     print(string.format("[Evolink] Session: %d encounters, %d catches (%d goal), %d flees, %d shiny caught",
-                        SessionStats.encounters, SessionStats.catches, SessionStats.goalCatches, SessionStats.flees, SessionStats.shinyCaught))
-                    Running = false
-                    RemoveFastBattle()
-                    stopAutoBattle()
+                        self.SessionStats.encounters, self.SessionStats.catches, self.SessionStats.goalCatches, self.SessionStats.flees, self.SessionStats.shinyCaught))
+                    self.Running = false
+                    self:RemoveFastBattle()
+                    self:stopAutoBattle()
                     return
                 end
-
-                if Config.NextChainEnabled then
-                    local shouldContinue = AdvanceChain()
+                if self.Config.NextChainEnabled then
+                    local shouldContinue = self:AdvanceChain()
                     if not shouldContinue then
                         print("[Evolink] Chain ended. Stopping farm.")
                         print(string.format("[Evolink] Session: %d encounters, %d catches (%d goal), %d flees, %d shiny caught",
-                            SessionStats.encounters, SessionStats.catches, SessionStats.goalCatches, SessionStats.flees, SessionStats.shinyCaught))
-                        Running = false
-                        RemoveFastBattle()
-                        stopAutoBattle()
+                            self.SessionStats.encounters, self.SessionStats.catches, self.SessionStats.goalCatches, self.SessionStats.flees, self.SessionStats.shinyCaught))
+                        self.Running = false
+                        self:RemoveFastBattle()
+                        self:stopAutoBattle()
                         return
                     end
                 end
-
-                LastAction = action
-                LastActionTime = tick()
+                self.LastAction = action
+                self.LastActionTime = tick()
                 task.wait(1.2)
-                local prisStr, shinyStr = GetDisplayPityStrings("catch")
+                local prisStr, shinyStr = self:GetDisplayPityStrings("catch")
                 local goalTag = isGoalCatch and " [GOAL]" or " [PITY]"
-                PendingLog = string.format("[Evolink] CATCH%s | Target: %s | Method: %s | PrisPity: %s | ShinyPity: %s",
+                self.PendingLog = string.format("[Evolink] CATCH%s | Target: %s | Method: %s | PrisPity: %s | ShinyPity: %s",
                     goalTag, targetLabel, method, prisStr, shinyStr)
                 task.wait(0.5)
-
             elseif action == "flee" then
-                LeaveBattle()
-                SessionStats.flees = SessionStats.flees + 1
-                LastAction = action
-                LastActionTime = tick()
-                local prisStr, shinyStr = GetDisplayPityStrings("flee")
-                PendingLog = string.format("[Evolink] FLEE | Target: %s | Method: FLEE | PrisPity: %s | ShinyPity: %s",
+                self:LeaveBattle()
+                self.SessionStats.flees = self.SessionStats.flees + 1
+                self.LastAction = action
+                self.LastActionTime = tick()
+                local prisStr, shinyStr = self:GetDisplayPityStrings("flee")
+                self.PendingLog = string.format("[Evolink] FLEE | Target: %s | Method: FLEE | PrisPity: %s | ShinyPity: %s",
                     targetLabel, prisStr, shinyStr)
                 task.wait(2.5)
-
             elseif action == "wait" then
                 task.wait(0.5)
             end
-
         else
-            WasInCatchWindow = false
-            ClearPityCache()
-            if PendingLog then print(PendingLog); PendingLog = nil end
-            if Config.FastBattle and FastBattleState.enabled then RemoveFastBattle() end
-            if autoBattleEnabled then stopAutoBattle() end
-
-            if not Config.EncounterEnabled then continue end
-
-            if (tick() - LastEncounterAttempt) >= Config.EncounterCooldown then
-                LastEncounterAttempt = tick()
-                local foundCreatures = FindTargetCreatures()
+            self.WasInCatchWindow = false
+            self:ClearPityCache()
+            if self.PendingLog then print(self.PendingLog); self.PendingLog = nil end
+            if self.Config.FastBattle and self.FastBattleState.enabled then self:RemoveFastBattle() end
+            if self.AutoBattleState.enabled then self:stopAutoBattle() end
+            if not self.Config.EncounterEnabled then continue end
+            if (tick() - self.LastEncounterAttempt) >= self.Config.EncounterCooldown then
+                self.LastEncounterAttempt = tick()
+                local foundCreatures = self:FindTargetCreatures()
                 if #foundCreatures > 0 then
                     for _, creatureId in ipairs(foundCreatures) do
-                        FireEncounter(creatureId)
-                        print("[Evolink] Fired with creature ID:", creatureId)
+                        self:FireEncounter(creatureId)
+                        print("[Evolink] Encounter fired with creature ID:", creatureId)
                         break
-                    end
-                else
-                    if SessionStats.encounters == 0 and (tick() - LastEncounterAttempt) < 2 then
-                        warn("[Evolink] No creatures found for target IDs:", table.concat(GetCurrentTargets() or {}, ", "))
                     end
                 end
             end
@@ -1318,52 +1266,11 @@ local function MainLoop()
     end
 end
 
-function Evolink.new(userConfig)
-    local self = setmetatable({}, Evolink)
-    if type(userConfig) == "table" then
-        for k, v in pairs(userConfig) do
-            if Config[k] ~= nil then
-                Config[k] = v
-            end
-        end
-    end
-    BuildTargetChain()
-    UpdateBallInventory()
-    return self
-end
-
-function Evolink:SetConfig(key, value)
-    if Config[key] ~= nil then
-        Config[key] = value
-        if key:find("EncounterTarget") then
-            BuildTargetChain()
-        end
-        return true
-    end
-    return false
-end
-
-function Evolink:GetConfig(key)
-    return Config[key]
-end
-
-function Evolink:GetAllConfig()
-    local copy = {}
-    for k, v in pairs(Config) do
-        copy[k] = v
-    end
-    return copy
-end
-
 function Evolink:Start()
-    if Running then
-        print("[Evolink] Already running")
-        return
-    end
-    Running = true
-    print("[Evolink] Started")
-    task.spawn(function()
-        local success, err = pcall(MainLoop)
+    if self.Running then return end
+    self.Running = true
+    self.MainThread = task.spawn(function()
+        local success, err = pcall(function() self:MainLoop() end)
         if not success then
             warn("[Evolink] Crashed: " .. tostring(err))
             warn("[Evolink] Stack: " .. tostring(debug.traceback()))
@@ -1372,114 +1279,155 @@ function Evolink:Start()
 end
 
 function Evolink:Stop()
-    Running = false
-    RemoveFastBattle()
-    stopAutoBattle()
+    self.Running = false
+    self:RemoveFastBattle()
+    self:stopAutoBattle()
     print("[Evolink] Stopped.")
     print(string.format("[Evolink] Session: %d encounters, %d catches (%d goal), %d flees, %d shiny caught",
-        SessionStats.encounters, SessionStats.catches, SessionStats.goalCatches, SessionStats.flees, SessionStats.shinyCaught))
+        self.SessionStats.encounters, self.SessionStats.catches, self.SessionStats.goalCatches, self.SessionStats.flees, self.SessionStats.shinyCaught))
 end
 
 function Evolink:Restart()
-    self:Stop()
-    task.wait(0.5)
-    self:Start()
+    self.Running = true
+    self.MainThread = task.spawn(function()
+        local success, err = pcall(function() self:MainLoop() end)
+        if not success then
+            warn("[Evolink] Crashed: " .. tostring(err))
+            warn("[Evolink] Stack: " .. tostring(debug.traceback()))
+        end
+    end)
 end
 
-function Evolink:IsRunning()
-    return Running
+function Evolink:SetConfig(key, value)
+    if self.Config[key] == nil then
+        warn("[Evolink] Invalid config key: " .. tostring(key))
+        return
+    end
+    self.Config[key] = value
+    if key:sub(1, 9) == "Encounter" and key ~= "EncounterCooldown" then
+        self:BuildTargetChain()
+        self.CurrentChainIndex = 1
+    end
+    print("[Evolink] Config set: " .. tostring(key) .. " = " .. tostring(value))
 end
 
-function Evolink:ToggleFastBattle()
-    local state = ToggleFastBattle()
-    print("[Evolink] FastBattle:", state and "ENABLED" or "DISABLED")
-    return state
-end
-
-function Evolink:SetFastBattle(enabled)
-    if enabled then ApplyFastBattle() else RemoveFastBattle() end
-    return FastBattleState.enabled
+function Evolink:GetConfig(key)
+    return self.Config[key]
 end
 
 function Evolink:ToggleHunting()
-    Config.HuntingEnabled = not Config.HuntingEnabled
-    return Config.HuntingEnabled
+    self.Config.HuntingEnabled = not self.Config.HuntingEnabled
+    print("[Evolink] HuntingEnabled: " .. tostring(self.Config.HuntingEnabled))
+    return self.Config.HuntingEnabled
 end
 
 function Evolink:ToggleEncounter()
-    Config.EncounterEnabled = not Config.EncounterEnabled
-    return Config.EncounterEnabled
+    self.Config.EncounterEnabled = not self.Config.EncounterEnabled
+    print("[Evolink] EncounterEnabled: " .. tostring(self.Config.EncounterEnabled))
+    return self.Config.EncounterEnabled
+end
+
+function Evolink:ToggleFastBattle()
+    return self:ToggleFastBattle()
 end
 
 function Evolink:SetHuntMode(mode)
     if mode ~= "Both" and mode ~= "ShinyOnly" and mode ~= "PrismaticOnly" and mode ~= "PrismaticShiny" then
         warn("[Evolink] Invalid hunt mode. Use: Both, ShinyOnly, PrismaticOnly, PrismaticShiny")
-        return false
+        return
     end
-    Config.HuntMode = mode
-    return true
+    self.Config.HuntMode = mode
+    print("[Evolink] HuntMode set to: " .. mode)
 end
 
 function Evolink:SetEncounterTarget(targetList)
     if type(targetList) ~= "table" then
         if type(targetList) == "number" then targetList = {targetList}
-        else warn("[Evolink] SetEncounterTarget requires a table of numbers or a single number") return false end
+        else warn("[Evolink] SetEncounterTarget requires a table of numbers or a single number") return end
     end
-    Config.EncounterTarget = targetList
-    BuildTargetChain()
-    CurrentChainIndex = 1
-    return true
+    self.Config.EncounterTarget = targetList
+    self:BuildTargetChain()
+    self.CurrentChainIndex = 1
+    print("[Evolink] EncounterTarget set to: " .. table.concat(self.Config.EncounterTarget, ", "))
 end
 
 function Evolink:AddTarget(configId)
-    if type(configId) ~= "number" then warn("[Evolink] AddTarget requires a number") return false end
-    local targets = GetCurrentTargets()
-    if not targets then warn("[Evolink] No active target group") return false end
+    if type(configId) ~= "number" then warn("[Evolink] AddTarget requires a number") return end
+    local targets = self:GetCurrentTargets()
+    if not targets then warn("[Evolink] No active target group to add to") return end
     for _, id in ipairs(targets) do
-        if id == configId then print("[Evolink] Target " .. configId .. " already in current group") return false end
+        if id == configId then print("[Evolink] Target " .. configId .. " already in current group") return end
     end
     table.insert(targets, configId)
-    return true
+    print("[Evolink] Added target: " .. configId)
 end
 
 function Evolink:RemoveTarget(configId)
-    if type(configId) ~= "number" then warn("[Evolink] RemoveTarget requires a number") return false end
-    local targets = GetCurrentTargets()
-    if not targets then warn("[Evolink] No active target group") return false end
+    if type(configId) ~= "number" then warn("[Evolink] RemoveTarget requires a number") return end
+    local targets = self:GetCurrentTargets()
+    if not targets then warn("[Evolink] No active target group") return end
     for i, id in ipairs(targets) do
         if id == configId then
             table.remove(targets, i)
-            return true
+            print("[Evolink] Removed target: " .. configId)
+            return
         end
     end
-    return false
+    print("[Evolink] Target not found: " .. configId)
 end
 
 function Evolink:ListTargets()
-    return GetCurrentTargets()
-end
-
-function Evolink:GetTargetChain()
-    local chain = {}
-    for i, group in ipairs(TargetChain) do
-        chain[i] = {group = group, current = (i == CurrentChainIndex)}
+    print("[Evolink] Current target group (" .. self.CurrentChainIndex .. "): " .. table.concat(self:GetCurrentTargets() or {}, ", "))
+    print("[Evolink] Chain groups:")
+    for i, group in ipairs(self.TargetChain) do
+        local marker = (i == self.CurrentChainIndex) and " <-- CURRENT" or ""
+        print("  Group " .. i .. ": " .. table.concat(group, ", ") .. marker)
     end
-    return chain
+    return self:GetCurrentTargets()
 end
 
-function Evolink:AdvanceChain()
-    return AdvanceChain()
+function Evolink:SetNextChainEnabled(enabled)
+    self.Config.NextChainEnabled = enabled == true
+    print("[Evolink] NextChainEnabled: " .. tostring(self.Config.NextChainEnabled))
 end
 
-function Evolink:ResetChain()
-    CurrentChainIndex = 1
-    return true
+function Evolink:SetLoopAfterChainEnd(enabled)
+    self.Config.LoopAfterChainEnd = enabled == true
+    print("[Evolink] LoopAfterChainEnd: " .. tostring(self.Config.LoopAfterChainEnd))
+end
+
+function Evolink:AdvanceTargetChain()
+    local result = self:AdvanceChain()
+    if result then print("[Evolink] Manually advanced to group " .. self.CurrentChainIndex)
+    else print("[Evolink] Cannot advance chain further") end
+    return result
+end
+
+function Evolink:ResetTargetChain()
+    self.CurrentChainIndex = 1
+    print("[Evolink] Chain reset to group 1: " .. table.concat(self:GetCurrentTargets() or {}, ", "))
+end
+
+function Evolink:SetChainTarget(groupNum, targetList)
+    if type(groupNum) ~= "number" or groupNum < 1 or groupNum > 5 then
+        warn("[Evolink] SetChainTarget requires groupNum 1-5")
+        return
+    end
+    if type(targetList) ~= "table" then
+        if type(targetList) == "number" then targetList = {targetList}
+        else warn("[Evolink] SetChainTarget requires a table of numbers or a single number") return end
+    end
+    local key = "EncounterTarget"
+    if groupNum > 1 then key = key .. groupNum end
+    self.Config[key] = targetList
+    self:BuildTargetChain()
+    print("[Evolink] Set " .. key .. " to: " .. table.concat(targetList, ", "))
 end
 
 function Evolink:SetFallbackChain(chain)
-    if type(chain) ~= "table" then warn("[Evolink] SetFallbackChain requires a table of ball names") return false end
-    Config.FallbackChain = chain
-    return true
+    if type(chain) ~= "table" then warn("[Evolink] SetFallbackChain requires a table of ball names") return end
+    self.Config.FallbackChain = chain
+    print("[Evolink] FallbackChain set to: " .. table.concat(self.Config.FallbackChain, " -> "))
 end
 
 function Evolink:SetBallForScenario(scenario, ballName)
@@ -1488,78 +1436,165 @@ function Evolink:SetBallForScenario(scenario, ballName)
         Shiny_NoPity = true, Shiny_PityMax = true,
     }
     if not validScenarios[scenario] then
-        warn("[Evolink] Invalid scenario")
-        return false
+        warn("[Evolink] Invalid scenario. Use: NonShiny_NoPity, NonShiny_PityMax, Shiny_NoPity, Shiny_PityMax")
+        return
     end
     if not BALLS[ballName] then
-        warn("[Evolink] Invalid ball name")
-        return false
+        warn("[Evolink] Invalid ball name. Use: SoftCatch, Common, Advanced, King, Prismatic")
+        return
     end
-    Config[scenario] = ballName
-    return true
+    self.Config[scenario] = ballName
+    print("[Evolink] " .. scenario .. " set to: " .. ballName)
 end
 
-function Evolink:GetSessionStats()
-    return {
-        encounters = SessionStats.encounters,
-        catches = SessionStats.catches,
-        goalCatches = SessionStats.goalCatches,
-        flees = SessionStats.flees,
-        shinyEncounters = SessionStats.shinyEncounters,
-        shinyCaught = SessionStats.shinyCaught,
-    }
+function Evolink:SetFleeFromShiny(enabled)
+    self.Config.FleeFromShiny = enabled == true
+    print("[Evolink] FleeFromShiny: " .. tostring(self.Config.FleeFromShiny))
 end
 
-function Evolink:ResetSessionStats()
-    SessionStats = {encounters = 0, catches = 0, flees = 0, shinyEncounters = 0, shinyCaught = 0, goalCatches = 0}
-    return true
+function Evolink:SetUseSoftCatch(enabled)
+    self.Config.UseSoftCatch = enabled ~= false
+    print("[Evolink] UseSoftCatch: " .. tostring(self.Config.UseSoftCatch))
 end
 
-function Evolink:GetStatus()
-    return {
-        running = Running,
-        huntingEnabled = Config.HuntingEnabled,
-        encounterEnabled = Config.EncounterEnabled,
-        huntMode = Config.HuntMode,
-        fastBattle = FastBattleState.enabled,
-        autoBattle = autoBattleEnabled,
-        currentChainIndex = CurrentChainIndex,
-        currentTargets = GetCurrentTargets(),
-        ballInventory = UpdateBallInventory(),
-    }
+function Evolink:SetFleeNonShinyAtPityMax(enabled)
+    self.Config.FleeNonShinyAtPityMax = enabled ~= false
+    print("[Evolink] FleeNonShinyAtPityMax: " .. tostring(self.Config.FleeNonShinyAtPityMax))
 end
 
-function Evolink:PrintConfig()
-    print("[Evolink] Current Configuration:")
-    for k, v in pairs(Config) do
-        if type(v) == "table" then
-            print("  " .. k .. ": " .. table.concat(v, ", "))
-        else
-            print("  " .. k .. ": " .. tostring(v))
+function Evolink:SetStopOnCatch(enabled)
+    self.Config.StopOnCatch = enabled == true
+    print("[Evolink] StopOnCatch: " .. tostring(self.Config.StopOnCatch))
+end
+
+function Evolink:SetEncounterCooldown(seconds)
+    if type(seconds) ~= "number" or seconds < 0 then
+        warn("[Evolink] SetEncounterCooldown requires a positive number")
+        return
+    end
+    self.Config.EncounterCooldown = seconds
+    print("[Evolink] EncounterCooldown set to: " .. seconds .. " seconds")
+end
+
+function Evolink:SetSkillSettings(newSettings)
+    if type(newSettings) ~= "table" then warn("[Evolink] SetSkillSettings requires a table") return end
+    for k, v in pairs(newSettings) do
+        if k == "healThreshold" then self.Config.SkillHealThreshold = type(v) == "number" and v or self.Config.SkillHealThreshold
+        elseif k == "preferKillOrder" then self.Config.SkillPreferKillOrder = v == true
+        elseif k == "allowMultiTarget" then self.Config.SkillAllowMultiTarget = v == true
+        elseif k == "debugMode" then self.Config.SkillDebugMode = v == true
+        elseif k == "fastMode" then self.Config.SkillFastMode = v == true
+        elseif k == "interval" then self.Config.SkillInterval = type(v) == "number" and v or self.Config.SkillInterval
         end
     end
-end
-
-function Evolink:SetSkillSettings(settings)
-    if type(settings) ~= "table" then warn("[Evolink] SetSkillSettings requires a table") return false end
-    if settings.healThreshold ~= nil then Config.SkillHealThreshold = type(settings.healThreshold) == "number" and settings.healThreshold or Config.SkillHealThreshold end
-    if settings.preferKillOrder ~= nil then Config.SkillPreferKillOrder = settings.preferKillOrder == true end
-    if settings.allowMultiTarget ~= nil then Config.SkillAllowMultiTarget = settings.allowMultiTarget == true end
-    if settings.debugMode ~= nil then Config.SkillDebugMode = settings.debugMode == true end
-    if settings.fastMode ~= nil then Config.SkillFastMode = settings.fastMode == true end
-    if settings.interval ~= nil then Config.SkillInterval = type(settings.interval) == "number" and settings.interval or Config.SkillInterval end
-    return true
+    print("[Evolink] Skill settings updated")
 end
 
 function Evolink:GetSkillSettings()
     return {
-        healThreshold = Config.SkillHealThreshold,
-        preferKillOrder = Config.SkillPreferKillOrder,
-        allowMultiTarget = Config.SkillAllowMultiTarget,
-        debugMode = Config.SkillDebugMode,
-        fastMode = Config.SkillFastMode,
-        interval = Config.SkillInterval,
+        healThreshold = self.Config.SkillHealThreshold,
+        preferKillOrder = self.Config.SkillPreferKillOrder,
+        allowMultiTarget = self.Config.SkillAllowMultiTarget,
+        debugMode = self.Config.SkillDebugMode,
+        fastMode = self.Config.SkillFastMode,
+        interval = self.Config.SkillInterval,
     }
+end
+
+function Evolink:GetSessionStats()
+    return {
+        encounters = self.SessionStats.encounters,
+        catches = self.SessionStats.catches,
+        goalCatches = self.SessionStats.goalCatches,
+        flees = self.SessionStats.flees,
+        shinyEncounters = self.SessionStats.shinyEncounters,
+        shinyCaught = self.SessionStats.shinyCaught,
+    }
+end
+
+function Evolink:ResetSessionStats()
+    self.SessionStats = {encounters = 0, catches = 0, flees = 0, shinyEncounters = 0, shinyCaught = 0, goalCatches = 0}
+    print("[Evolink] Session stats reset.")
+end
+
+function Evolink:GetStatus()
+    return {
+        running = self.Running,
+        huntingEnabled = self.Config.HuntingEnabled,
+        encounterEnabled = self.Config.EncounterEnabled,
+        huntMode = self.Config.HuntMode,
+        fastBattle = self.FastBattleState.enabled,
+        autoBattle = self.AutoBattleState.enabled,
+        currentChainIndex = self.CurrentChainIndex,
+        currentTargets = self:GetCurrentTargets(),
+        ballInventory = self:UpdateBallInventory(),
+    }
+end
+
+function Evolink:PrintConfig()
+    print("")
+    print("=" .. string.rep("=", 62))
+    print("  Evolink Auto Catch + Battle Module")
+    print("=" .. string.rep("=", 62))
+    print("  HuntingEnabled:       " .. tostring(self.Config.HuntingEnabled))
+    print("  EncounterEnabled:     " .. tostring(self.Config.EncounterEnabled))
+    print("  EncounterCooldown:    " .. tostring(self.Config.EncounterCooldown))
+    print("  HuntMode:             " .. tostring(self.Config.HuntMode))
+    print("  FleeFromShiny:        " .. tostring(self.Config.FleeFromShiny))
+    print("  UseSoftCatch:         " .. tostring(self.Config.UseSoftCatch))
+    print("  FleeNonShiny@Max:     " .. tostring(self.Config.FleeNonShinyAtPityMax))
+    print("  FastBattle:           " .. tostring(self.Config.FastBattle))
+    print("  StopOnCatch:          " .. tostring(self.Config.StopOnCatch))
+    print("  NextChain:            " .. tostring(self.Config.NextChainEnabled))
+    print("  LoopAfterChain:       " .. tostring(self.Config.LoopAfterChainEnd))
+    print("")
+    print("  SkillHealThreshold:   " .. tostring(self.Config.SkillHealThreshold))
+    print("  SkillPreferKillOrder: " .. tostring(self.Config.SkillPreferKillOrder))
+    print("  SkillAllowMultiTarget:" .. tostring(self.Config.SkillAllowMultiTarget))
+    print("  SkillDebugMode:       " .. tostring(self.Config.SkillDebugMode))
+    print("  SkillFastMode:        " .. tostring(self.Config.SkillFastMode))
+    print("  SkillInterval:        " .. tostring(self.Config.SkillInterval))
+    print("")
+    print("  Target Chain:")
+    for i, group in ipairs(self.TargetChain) do
+        print("    Group " .. i .. ": " .. table.concat(group, ", "))
+    end
+    print("")
+    print("  Ball Inventory:")
+    for _, ballName in ipairs(self.Config.FallbackChain) do
+        local count = self.BallInventory[ballName] or 0
+        if count == math.huge then print("    " .. ballName .. ": UNLIMITED")
+        else print("    " .. ballName .. ": " .. count) end
+    end
+    print("    SoftCatch: UNLIMITED")
+    print("")
+    print("  Fallback Chain: " .. table.concat(self.Config.FallbackChain, " -> "))
+    print("  Scenario Balls:")
+    print("    NonShiny + NoPity:    " .. tostring(self.Config.NonShiny_NoPity))
+    print("    NonShiny + PityMax:   " .. tostring(self.Config.NonShiny_PityMax))
+    print("    Shiny + NoPity:       " .. tostring(self.Config.Shiny_NoPity))
+    print("    Shiny + PityMax:      " .. tostring(self.Config.Shiny_PityMax))
+    print("")
+end
+
+function Evolink:ExecuteBestSkills()
+    return self:executeBestSkillsForAllPets()
+end
+
+function Evolink:StartAutoBattle()
+    return self:startAutoBattle()
+end
+
+function Evolink:StopAutoBattle()
+    return self:stopAutoBattle()
+end
+
+function Evolink:ApplyFastBattle()
+    return self:ApplyFastBattle()
+end
+
+function Evolink:RemoveFastBattle()
+    return self:RemoveFastBattle()
 end
 
 return Evolink
