@@ -1714,4 +1714,30 @@ function Evolink:StopAutoBattle()
     self:_StopAutoBattle()
 end
 
+function Evolink:ToggleAutoBattle()
+    if self.autoBattleEnabled then
+        self:_StopAutoBattle()
+        print("[Evolink] AutoBattle DISABLED")
+    else
+        self:_StartAutoBattle()
+        print("[Evolink] AutoBattle ENABLED")
+    end
+    return self.autoBattleEnabled
+end
+
+function Evolink:SetAutoBattle(enabled)
+    if enabled then
+        if not self.autoBattleEnabled then
+            self:_StartAutoBattle()
+        end
+        print("[Evolink] AutoBattle ENABLED")
+    else
+        if self.autoBattleEnabled then
+            self:_StopAutoBattle()
+        end
+        print("[Evolink] AutoBattle DISABLED")
+    end
+    return self.autoBattleEnabled
+end
+
 return Evolink
